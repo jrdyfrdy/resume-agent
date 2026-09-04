@@ -1,0 +1,15 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2022)
+entering extended mode
+(./resume.tex
+LaTeX2e <2021-11-15> patch level 1
+(./resume.aux)
+! Undefined control sequence.
+l.7 \pdfglyphtounicode
+                      {A}{0041}
+The control sequence at the end of the top line
+of your error message was never \def'ed.
+
+! LaTeX Error: Something's wrong--perhaps a missing \item.
+
+See the LaTeX manual or LaTeX Companion for explanation.
+No pages of output.

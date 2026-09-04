@@ -1,0 +1,9 @@
+# Loaded and validated, but M0's template renders the four canonical Jake's
+# Resume sections only (Education / Experience / Projects / Technical Skills).
+# A certifications section would cost vertical budget on a one-page layout;
+# whether it earns its place is a selection decision, and selection is M3.
+certifications:
+  - name: AWS Certified Solutions Architect - Associate
+    issuer: Amazon Web Services
+    issued: 2024-03
+    credential_url: https://example.com/verify/SAA-0000

@@ -1,0 +1,35 @@
+id: prj_ledgerlint
+type: project
+name: LedgerLint
+role: Author
+start: 2023-11
+end: 2024-05
+tech: [python, duckdb, pandas, testing]
+repo_url: https://github.com/johndoe/ledgerlint
+live_url: null
+bullets:
+  - id: prj_ledgerlint.b1
+    canonical: >-
+      Built a DuckDB-backed linter that flags unbalanced double-entry journals,
+      catching 340 defects across 6 public ledgers
+    skills: [duckdb, python, data-modeling]
+    themes: [data, devex]
+    metrics:
+      defects_found: 340
+      ledgers_scanned: 6
+    seniority_signal: mid
+    evidence: Repo README benchmarks; issues filed upstream, Jan-May 2024
+    confidence: verified
+
+  - id: prj_ledgerlint.b2
+    canonical: >-
+      Cut a 12-minute full-ledger scan to 43s by pushing predicate filters into
+      DuckDB instead of pandas
+    skills: [duckdb, pandas, performance]
+    themes: [performance, data]
+    metrics:
+      scan_before_min: 12
+      scan_after_s: 43
+    seniority_signal: mid
+    evidence: pytest-benchmark suite, commit 8f21ac4
+    confidence: verified

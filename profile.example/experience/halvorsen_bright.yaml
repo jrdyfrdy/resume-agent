@@ -1,0 +1,52 @@
+# Employer name carries both an ampersand and "R&D" -- two of the spec 6.2
+# escape fixtures, sitting in a field that gets interpolated into a LaTeX macro
+# argument. If the escaper is wrong, this file is what breaks the build.
+id: exp_halvorsen_bright
+type: experience
+org: Halvorsen & Bright R&D
+title: Senior Backend Engineer
+location: Oakland, CA
+start: 2023-02
+end: null # still there -- renders as "Present"
+tech: [python, fastapi, postgresql, redis, kafka, aws, terraform, observability]
+bullets:
+  - id: exp_halvorsen_bright.b1
+    canonical: >-
+      Cut p95 checkout latency from 820ms to ~50ms with a Redis read-through
+      cache and by removing N+1 queries across 12 endpoints
+    skills: [redis, caching, sql-optimization, performance, fastapi]
+    themes: [performance, backend]
+    metrics:
+      latency_before_ms: 820
+      latency_after_ms: 50
+      endpoints_touched: 12
+    seniority_signal: senior
+    evidence: PR #4412; Grafana p95 dashboard, Nov 2024
+    confidence: verified
+
+  - id: exp_halvorsen_bright.b2
+    canonical: >-
+      Held 100% uptime on the payments ingest for 14 months using replay-safe
+      Kafka consumers and a dead-letter queue
+    skills: [kafka, incident-response, observability, python]
+    themes: [reliability, backend]
+    metrics:
+      uptime_pct: 100
+      months_observed: 14
+    seniority_signal: senior
+    evidence: PagerDuty incident log, Feb 2024 - Apr 2025; zero Sev1/Sev2
+    confidence: verified
+
+  - id: exp_halvorsen_bright.b3
+    canonical: >-
+      Repartitioned the events table on user_id, taking the slowest tenant
+      report from 41s to <100ms at >2M rows/day
+    skills: [postgresql, sql-optimization, data-modeling, performance]
+    themes: [performance, data]
+    metrics:
+      report_before_s: 41
+      report_after_ms: 100
+      rows_per_day: 2000000
+    seniority_signal: senior
+    evidence: Migration 0091; pg_stat_statements before/after, Aug 2024
+    confidence: verified

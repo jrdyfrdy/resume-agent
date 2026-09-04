@@ -1,0 +1,10 @@
+# Normalise to LF in the repository and on checkout.
+#
+# tests/golden/jake_resume.tex is compared byte for byte against a fresh Jinja
+# render, and Jinja emits LF. Without this, Git's autocrlf would check the
+# golden file out with CRLF on Windows and the snapshot test would fail on a
+# clean clone for reasons that have nothing to do with the template.
+* text=auto eol=lf
+
+*.pdf binary
+*.png binary

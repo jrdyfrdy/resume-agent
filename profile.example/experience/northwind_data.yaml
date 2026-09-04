@@ -1,0 +1,50 @@
+id: exp_northwind_data
+type: experience
+org: Northwind Data Systems
+title: Backend Engineer
+location: Remote
+start: 2020-08
+end: 2023-01
+tech: [C#, .NET, python, postgresql, aws, terraform, github actions]
+bullets:
+  # "C#", "AT&T" and "$1.2M" in one sentence: three separate escape hazards
+  # (#, & and $) in a single interpolated value.
+  - id: exp_northwind_data.b1
+    canonical: >-
+      Built a C#/.NET reconciliation service for an AT&T billing contract that
+      cleared $1.2M of disputed invoices in one quarter
+    skills: [C#, .NET, sql, data-modeling]
+    themes: [backend, data]
+    metrics:
+      disputed_invoices_usd: 1200000
+      quarters_to_clear: 1
+    seniority_signal: mid
+    evidence: Contract retro deck, Mar 2022; finance sign-off from K. Ellery
+    confidence: verified
+
+  - id: exp_northwind_data.b2
+    canonical: >-
+      Cut monthly AWS spend 38% by right-sizing RDS and moving cold events to S3
+      under a Terraform lifecycle policy
+    skills: [aws, terraform, cost-optimization, postgresql]
+    themes: [cost, backend]
+    metrics:
+      spend_reduction_pct: 38
+    seniority_signal: mid
+    evidence: Cost Explorer, Jun-Sep 2022; baseline $11.4k/mo
+    confidence: verified
+
+  # "stdout | jq" puts a pipe character in body text -- fine in TeX's default
+  # OT1 encoding only if it is escaped (it renders as an em-dash otherwise).
+  - id: exp_northwind_data.b3
+    canonical: >-
+      Cut CI feedback from 22 to 6 minutes by sharding pytest across GitHub
+      Actions runners with a stdout | jq failure summary
+    skills: [github actions, ci-cd, testing, python]
+    themes: [devex, backend]
+    metrics:
+      ci_before_min: 22
+      ci_after_min: 6
+    seniority_signal: mid
+    evidence: Actions run history, Oct 2022; median of 50 runs before/after
+    confidence: approximate

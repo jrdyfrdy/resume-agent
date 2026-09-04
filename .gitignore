@@ -1,0 +1,27 @@
+# Build output
+out/
+
+# YOUR real career data -- never committed. profile.example/ is the public
+# stand-in that tests and development use (CLAUDE.md).
+profile/
+
+# Upstream template + license, fetched by scripts, not authored here.
+.vendor/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# LaTeX intermediates. Scoped to out/ on purpose: a bare `*.log` would also
+# ignore tests/fixtures/*.log, which are checked-in parser fixtures.
+out/**/*.aux
+out/**/*.fls
+out/**/*.fdb_latexmk
+out/**/*.synctex.gz
+
+# Env
+.env

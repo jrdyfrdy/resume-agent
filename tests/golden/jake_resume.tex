@@ -1,0 +1,222 @@
+%-------------------------
+% Resume in LaTeX -- "Jake's Resume"
+% Author  : Jake Gutierrez
+% Source  : https://github.com/jakegut/resume (fetched verbatim, then adapted)
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT -- Copyright (c) 2020 Jake Gutierrez
+%
+%   Permission is hereby granted, free of charge, to any person obtaining a copy
+%   of this software and associated documentation files (the "Software"), to deal
+%   in the Software without restriction, including without limitation the rights
+%   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+%   copies of the Software, and to permit persons to whom the Software is
+%   furnished to do so, subject to the following conditions:
+%
+%   The above copyright notice and this permission notice shall be included in
+%   all copies or substantial portions of the Software.
+%
+%   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+%   IMPLIED. See .vendor/jake_resume_LICENSE for the full text.
+%
+%-------------------------
+% ADAPTATIONS FOR THIS PROJECT
+%
+%   1. Content replaced with Jinja2 markers using the LaTeX-safe delimiters from
+%      spec 6.1. See latex/env.py for the delimiter table. (This banner cannot
+%      spell the markers out: Jinja parses its own delimiters even inside a
+%      LaTeX comment, because it never sees the file as LaTeX.)
+%   2. Every interpolated value passes through the `tex` filter. This is checked
+%      mechanically by tests/test_env.py -- an unfiltered one fails the suite.
+%   3. Upstream's "%%%%%% RESUME STARTS HERE" banner was rewritten: `%%` is
+%      Jinja's line_statement_prefix, so that line would be parsed as code.
+%   4. NOTHING about the page geometry is exposed as a variable. Margins, font
+%      size and \vspace are fixed here on purpose (CLAUDE.md rule 3): the agent
+%      controls how much content there is, never how tightly it is crammed.
+%-------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+
+%----------ATS TEXT EXTRACTION----------
+% CLAUDE.md rule 4 / spec 6.3: these lines are what make the PDF's glyphs
+% extract as real text instead of garbage. They are the highest-leverage lines
+% in the file and they stay.
+%
+% They are also pdfTeX primitives, and tectonic's engine is XeTeX. Unguarded,
+% \input{glyphtounicode} aborts the run with "Undefined control sequence
+% \pdfglyphtounicode" -- tectonic ships no pdfTeX format at all, so there is no
+% flag that makes the bare form work.
+%
+% XeTeX does not need them: it emits Unicode-mapped PDFs natively, because
+% glyphtounicode exists to patch pdfTeX's 8-bit font encodings, which is a
+% problem XeTeX does not have. So the guard runs them wherever they exist
+% (pdflatex, reached via the latexmk and Docker rungs of the fallback chain)
+% and skips them where they are both unavailable and unnecessary.
+%
+% The guard means the mechanism is now engine-dependent, so the *property* is
+% verified directly on the built PDF instead of being assumed from these lines:
+% tests/test_render_compile.py::test_pdf_extracts_as_real_text asserts that
+% "AT&T", "C#", "100% uptime" and "user_id" come back out of the finished PDF.
+\ifdefined\pdfgentounicode
+  \input{glyphtounicode}
+  \pdfgentounicode=1
+\fi
+
+\pagestyle{fancy}
+\fancyhf{} % clear all header and footer fields
+\fancyfoot{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+
+
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubSubheading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \textit{\small#1} & \textit{\small #2} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+% RESUME STARTS HERE
+%-------------------------------------------
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    \textbf{\Huge \scshape John Doe} \\ \vspace{1pt}
+    \small (415) 555-0148 $|$ Oakland, CA $|$
+    \href{mailto:john.doe@example.com}{\underline{john.doe@example.com}}
+    $|$ \href{https://linkedin.com/in/johndoe}{\underline{linkedin.com/in/johndoe}}
+    $|$ \href{https://github.com/johndoe}{\underline{github.com/johndoe}}
+\end{center}
+
+%----------EDUCATION----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of California, Santa Cruz}{Santa Cruz, CA}
+      {B.S. Computer Science}{Sept. 2016 -- June 2020}
+  \resumeSubHeadingListEnd
+
+%----------EXPERIENCE----------
+\section{Experience}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {Senior Backend Engineer}{Feb. 2023 -- Present}
+      {Halvorsen \& Bright R\&D}{Oakland, CA}
+      \resumeItemListStart
+        \resumeItem{Cut p95 checkout latency from 820ms to \textasciitilde{}50ms with a Redis read-through cache and by removing N+1 queries across 12 endpoints}
+        \resumeItem{Held 100\% uptime on the payments ingest for 14 months using replay-safe Kafka consumers and a dead-letter queue}
+        \resumeItem{Repartitioned the events table on user\_id, taking the slowest tenant report from 41s to \textless{}100ms at \textgreater{}2M rows/day}
+      \resumeItemListEnd
+    \resumeSubheading
+      {Backend Engineer}{Aug. 2020 -- Jan. 2023}
+      {Northwind Data Systems}{Remote}
+      \resumeItemListStart
+        \resumeItem{Built a C\#/.NET reconciliation service for an AT\&T billing contract that cleared \$1.2M of disputed invoices in one quarter}
+        \resumeItem{Cut monthly AWS spend 38\% by right-sizing RDS and moving cold events to S3 under a Terraform lifecycle policy}
+        \resumeItem{Cut CI feedback from 22 to 6 minutes by sharding pytest across GitHub Actions runners with a stdout \textbar{} jq failure summary}
+      \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+%----------PROJECTS----------
+\section{Projects}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{LedgerLint} $|$ \emph{Python, DuckDB, pandas, Testing}}{Nov. 2023 -- May 2024}
+          \resumeItemListStart
+            \resumeItem{Built a DuckDB-backed linter that flags unbalanced double-entry journals, catching 340 defects across 6 public ledgers}
+            \resumeItem{Cut a 12-minute full-ledger scan to 43s by pushing predicate filters into DuckDB instead of pandas}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{TileCache} $|$ \emph{TypeScript, Node.js, Redis, Docker}}{June 2022 -- Mar. 2023}
+          \resumeItemListStart
+            \resumeItem{Shipped a Node.js \textasciicircum{}18 tile cache serving 4.1M requests/day at a 94\% hit rate and p99 under 30ms}
+            \resumeItem{Added a Redis invalidation path keyed on \{z\}/\{x\}/\{y\} so stale tiles expire within 2 seconds of a source update}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{VitalsBoard} $|$ \emph{React, TypeScript, FastAPI, PostgreSQL, Observability}}{May 2021 -- Dec. 2021}
+          \resumeItemListStart
+            \resumeItem{Built a React and FastAPI dashboard rendering 18-month vitals trends for \textasciitilde{}3k synthetic patients from a single query}
+            \resumeItem{Instrumented it with OpenTelemetry traces, cutting median debug time on data gaps from 40 to 8 minutes}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+%----------TECHNICAL SKILLS----------
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Python, C\#, TypeScript, SQL, Go} \\
+     \textbf{Frameworks}{: FastAPI, Node.js, React, .NET} \\
+     \textbf{Data}{: PostgreSQL, Redis, Kafka, DuckDB, pandas} \\
+     \textbf{Infrastructure}{: AWS, Docker, Kubernetes, Terraform, GitHub Actions} \\
+     \textbf{Practices}{: Caching, Query Optimization, Performance Profiling, Observability, API Design, CI/CD, Testing, Data Modeling, Cost Optimization, Incident Response}
+    }}
+ \end{itemize}
+
+%-------------------------------------------
+\end{document}

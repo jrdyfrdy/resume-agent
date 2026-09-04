@@ -1,0 +1,39 @@
+id: prj_tilecache
+type: project
+name: TileCache
+role: Author
+start: 2022-06
+end: 2023-03
+tech: [typescript, node.js, redis, docker]
+repo_url: https://github.com/johndoe/tilecache
+live_url: https://tilecache.example.com
+bullets:
+  # "Node.js ^18" -- the caret is TeX's superscript operator, so an unescaped
+  # version of this line silently typesets "18" as a superscript.
+  - id: prj_tilecache.b1
+    canonical: >-
+      Shipped a Node.js ^18 tile cache serving 4.1M requests/day at a 94% hit
+      rate and p99 under 30ms
+    skills: [node.js, typescript, caching, performance]
+    themes: [performance, backend]
+    metrics:
+      requests_per_day: 4100000
+      hit_rate_pct: 94
+      p99_ms: 30
+    seniority_signal: mid
+    evidence: Cloudflare analytics export, Feb 2023
+    confidence: verified
+
+  # Braces in "{z}/{x}/{y}" are TeX grouping characters -- unescaped, they
+  # vanish from the output and take the surrounding argument with them.
+  - id: prj_tilecache.b2
+    canonical: >-
+      Added a Redis invalidation path keyed on {z}/{x}/{y} so stale tiles expire
+      within 2 seconds of a source update
+    skills: [redis, caching, node.js]
+    themes: [backend, reliability]
+    metrics:
+      staleness_window_s: 2
+    seniority_signal: mid
+    evidence: Design note in docs/invalidation.md; load test, Mar 2023
+    confidence: verified

@@ -1,0 +1,176 @@
+# The canonical skill vocabulary (spec 3.2).
+#
+# This table does double duty:
+#   1. query expansion at retrieval time (M1) -- "k8s" in a JD finds "Kubernetes"
+#   2. the allow-list for the fabrication check (M4) -- a generated bullet naming
+#      a technology that is not in here is, by definition, invented
+#
+# `Profile._skills_resolve_to_vocabulary` enforces at load time that every
+# `tech:` and every `bullets[].skills:` entry elsewhere in this profile resolves
+# to a canonical name or an alias below. A typo is a load error, not a silent miss.
+#
+# `canonical` is written in *display* casing ("PostgreSQL", not "postgresql")
+# because it is what the Technical Skills section prints. Matching is
+# case-insensitive throughout -- `Profile.skill_vocabulary()` lowercases both
+# sides -- so bullets elsewhere can keep writing `skills: [postgresql]`.
+#
+# `C#` is here on purpose: it is the shortest realistic string that breaks a
+# naive LaTeX escaper (`#` is TeX's macro-parameter character).
+skills:
+  # -- languages ----------------------------------------------------------
+  - canonical: Python
+    aliases: [py, python3]
+    category: language
+    level: expert
+    first_used: 2016-09
+  - canonical: C#
+    aliases: [csharp, c sharp, c-sharp]
+    category: language
+    level: working
+    first_used: 2020-08
+  - canonical: TypeScript
+    aliases: [ts, javascript, js]
+    category: language
+    level: working
+    first_used: 2019-01
+  - canonical: SQL
+    aliases: [ansi sql, t-sql]
+    category: language
+    level: expert
+    first_used: 2017-02
+  - canonical: Go
+    aliases: [golang]
+    category: language
+    level: familiar
+    first_used: 2023-05
+
+  # -- frameworks and runtimes -------------------------------------------
+  - canonical: FastAPI
+    aliases: [fast api]
+    category: framework
+    level: expert
+    first_used: 2021-04
+  - canonical: Node.js
+    aliases: [node, nodejs]
+    category: framework
+    level: working
+    first_used: 2019-01
+  - canonical: React
+    aliases: [react.js, reactjs]
+    category: framework
+    level: working
+    first_used: 2019-06
+  - canonical: .NET
+    aliases: [dotnet, dotnet core, asp.net]
+    category: framework
+    level: working
+    first_used: 2020-08
+
+  # -- data ---------------------------------------------------------------
+  - canonical: PostgreSQL
+    aliases: [postgres, psql, rds postgres]
+    category: data
+    level: expert
+    first_used: 2017-02
+  - canonical: Redis
+    aliases: [elasticache, redis cluster]
+    category: data
+    level: working
+    first_used: 2021-09
+  - canonical: Kafka
+    aliases: [apache kafka, msk]
+    category: data
+    level: working
+    first_used: 2022-03
+  - canonical: DuckDB
+    aliases: [duck db]
+    category: data
+    level: working
+    first_used: 2023-11
+  - canonical: pandas
+    aliases: [pd]
+    category: data
+    level: expert
+    first_used: 2018-01
+
+  # -- infrastructure -----------------------------------------------------
+  - canonical: AWS
+    aliases: [amazon web services, ec2, s3, lambda]
+    category: infrastructure
+    level: working
+    first_used: 2020-08
+  - canonical: Docker
+    aliases: [containers, oci images]
+    category: infrastructure
+    level: working
+    first_used: 2020-11
+  - canonical: Kubernetes
+    aliases: [k8s, container orchestration, eks, gke]
+    category: infrastructure
+    level: familiar
+    first_used: 2024-02
+  - canonical: Terraform
+    aliases: [tf, infrastructure as code, iac]
+    category: infrastructure
+    level: working
+    first_used: 2022-07
+  - canonical: GitHub Actions
+    aliases: [gha, github ci]
+    category: infrastructure
+    level: working
+    first_used: 2021-01
+
+  # -- practices ----------------------------------------------------------
+  # These are tags first and resume line-items second: they drive the theme
+  # diversity constraint in M3's selection knapsack. Display casing still
+  # matters, because M0 prints them.
+  - canonical: Caching
+    aliases: [caching, read-through cache, cache invalidation]
+    category: practice
+    level: expert
+    first_used: 2021-09
+  - canonical: Query Optimization
+    aliases: [sql-optimization, query tuning, index tuning]
+    category: practice
+    level: expert
+    first_used: 2019-03
+  - canonical: Performance Profiling
+    aliases: [performance, latency optimisation, profiling]
+    category: practice
+    level: expert
+    first_used: 2019-03
+  - canonical: Observability
+    aliases: [monitoring, tracing, opentelemetry, grafana]
+    category: practice
+    level: working
+    first_used: 2022-01
+  - canonical: API Design
+    aliases: [api-design, rest, openapi]
+    category: practice
+    level: working
+    first_used: 2021-04
+  - canonical: CI/CD
+    aliases: [ci-cd, continuous integration, release automation]
+    category: practice
+    level: working
+    first_used: 2021-01
+  - canonical: Testing
+    aliases: [pytest, property-based testing, unit testing]
+    category: practice
+    level: expert
+    first_used: 2018-09
+  - canonical: Data Modeling
+    aliases: [data-modeling, schema design, normalisation]
+    category: practice
+    level: working
+    first_used: 2019-03
+  - canonical: Cost Optimization
+    aliases: [cost-optimization, finops, cloud spend]
+    category: practice
+    level: working
+    first_used: 2023-02
+  - canonical: Incident Response
+    aliases: [incident-response, on-call, postmortems, sre]
+    category: practice
+    level: working
+    first_used: 2022-01

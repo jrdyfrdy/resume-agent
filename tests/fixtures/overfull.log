@@ -1,0 +1,24 @@
+This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2022)
+entering extended mode
+(./resume.tex
+LaTeX2e <2021-11-15> patch level 1
+(./resume.aux)
+Overfull \hbox (12.34567pt too wide) in paragraph at lines 128--130
+[]\OT1/cmr/m/n/10 Cut p95 check-out la-tency from 820ms to 50ms with a Re-dis
+ []
+
+Underfull \hbox (badness 10000) in paragraph at lines 131--132
+[]\OT1/cmr/m/n/10 this one is only loose, not overfull, and must be ignored
+ []
+
+Overfull \hbox (5.0pt too wide) detected at line 99
+[] []
+
+Overfull \vbox (7.5pt too high) has occurred while \output is active
+Overfull \hbox (0.51234pt too wide) in paragraph at lines 204--206
+[]\OT1/cmr/m/n/10 a marginal one
+ []
+
+[1{/usr/local/texlive/2022/texmf-var/fonts/map/pdftex/updmap/pdftex.map}]
+(./resume.aux) )
+Output written on resume.pdf (1 page, 32828 bytes).

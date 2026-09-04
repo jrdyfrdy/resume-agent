@@ -1,0 +1,35 @@
+id: prj_vitals_dashboard
+type: project
+name: VitalsBoard
+role: Author
+start: 2021-05
+end: 2021-12
+tech: [react, typescript, fastapi, postgresql, observability]
+repo_url: https://github.com/johndoe/vitalsboard
+live_url: null
+bullets:
+  - id: prj_vitals_dashboard.b1
+    canonical: >-
+      Built a React and FastAPI dashboard rendering 18-month vitals trends for
+      ~3k synthetic patients from a single query
+    skills: [react, fastapi, postgresql, api-design]
+    themes: [frontend, backend]
+    metrics:
+      trend_window_months: 18
+      patients: 3000
+    seniority_signal: mid
+    evidence: Repo demo; query plan in docs/perf.md
+    confidence: verified
+
+  - id: prj_vitals_dashboard.b2
+    canonical: >-
+      Instrumented it with OpenTelemetry traces, cutting median debug time on
+      data gaps from 40 to 8 minutes
+    skills: [observability, fastapi, python]
+    themes: [observability, devex]
+    metrics:
+      debug_before_min: 40
+      debug_after_min: 8
+    seniority_signal: mid
+    evidence: Self-timed over 12 investigations, Nov-Dec 2021
+    confidence: approximate

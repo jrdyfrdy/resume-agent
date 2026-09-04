@@ -1,0 +1,11 @@
+education:
+  - institution: University of California, Santa Cruz
+    degree: B.S. Computer Science
+    location: Santa Cruz, CA
+    start: 2016-09
+    end: 2020-06
+    gpa: "3.7"
+    coursework:
+      - Distributed Systems
+      - Database Systems
+      - Compilers

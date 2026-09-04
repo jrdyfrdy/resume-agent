@@ -1,0 +1,13 @@
+# Fake person. This directory is the public stand-in for `profile/` and is what
+# every test loads. Several strings in here are chosen to stress the LaTeX
+# escaper -- see profile.example/README.md.
+name: John Doe
+email: john.doe@example.com
+phone: (415) 555-0148
+location: Oakland, CA
+links:
+  - label: linkedin.com/in/johndoe
+    url: https://linkedin.com/in/johndoe
+  - label: github.com/johndoe
+    url: https://github.com/johndoe
+work_authorization: US citizen
