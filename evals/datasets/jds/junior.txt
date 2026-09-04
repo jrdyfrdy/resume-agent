@@ -1,0 +1,49 @@
+Junior Software Engineer (Backend)
+Brightloom — Remote (US)
+
+About us
+Brightloom is on a mission to make small-business accounting effortless. We're a
+tight-knit crew of 14 building something people genuinely love. We move fast, we
+ship on Fridays, and we're looking for someone who wants to grow with us.
+
+What you'll do
+- Build and maintain backend services in Python and FastAPI
+- Write SQL against our PostgreSQL database and help keep queries fast
+- Work with the frontend team on API contracts
+- Fix bugs, write tests, and review your teammates' pull requests
+- Help out with on-call rotation once you're ramped up
+- Take part in incident reviews and help write postmortems
+- Pitch in wherever needed — we all wear a lot of hats around here
+
+What we're looking for
+- 2+ years of professional software engineering experience
+- Strong Python
+- Experience with FastAPI or Flask
+- Solid SQL and PostgreSQL
+- Familiarity with Docker
+- Experience with AWS (EC2, S3, Lambda)
+- Understanding of REST API design
+- Experience with CI/CD pipelines, ideally GitHub Actions
+- Comfortable with Git and trunk-based development
+- Experience writing automated tests (pytest preferred)
+- Familiarity with Redis or another caching layer
+- Exposure to Kubernetes is a plus
+- Some frontend experience (React, TypeScript) is a plus
+- BS in Computer Science or equivalent practical experience
+- Excellent written and verbal communication
+- A self-starter who thrives in a fast-paced environment with minimal supervision
+
+Nice to have
+- Experience in fintech or accounting software
+- Contributions to open source
+
+What we offer
+- Competitive salary
+- Equity
+- Flexible PTO
+- Fully remote
+
+We're a startup, so the hours can be long when we're pushing toward a launch,
+but we make up for it with flexibility the rest of the time. If you're looking
+for a 9-to-5, this probably isn't the right fit — but if you want to have real
+ownership early in your career, we'd love to talk.

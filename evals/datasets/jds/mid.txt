@@ -1,0 +1,46 @@
+Software Engineer II, Platform Infrastructure
+Kestrel Health Systems
+Location: Boston, MA (Hybrid — 3 days on site)
+
+The successful candidate will join our Platform Infrastructure team, which owns
+the services that every other engineering team at Kestrel depends on. Kestrel
+processes clinical data for 400+ hospital systems, and our platform is the layer
+that keeps that data moving reliably and within our regulatory obligations.
+
+Responsibilities
+- Design, build, and operate backend services that ingest and route clinical
+  data at high volume
+- Own services end to end, including participation in a shared on-call rotation
+- Respond to production incidents, lead postmortems, and drive the remediation
+  items that come out of them
+- Improve the reliability and observability of existing services; our team
+  publishes and defends internal SLOs
+- Reduce operational toil through automation
+- Partner with the Security and Compliance teams to ensure changes meet HIPAA
+  requirements
+- Mentor engineers earlier in their careers through code review
+
+Required qualifications
+- 3-5 years of professional backend engineering experience
+- Proficiency in Python or Go
+- Experience designing and operating RESTful services in production
+- Strong working knowledge of PostgreSQL, including query optimization
+- Experience with a message queue or streaming platform (Kafka preferred)
+- Experience with containerized deployments (Docker, Kubernetes)
+- Infrastructure as code experience, ideally Terraform
+- Demonstrated experience carrying a production on-call pager
+
+Preferred qualifications
+- Experience with observability tooling (OpenTelemetry, Grafana, Prometheus)
+- Familiarity with healthcare data standards (HL7, FHIR)
+- Experience working in a regulated environment
+- Experience with AWS
+
+About the team
+Platform Infrastructure is eight engineers. We take reliability seriously: we
+run a blameless postmortem for every Sev1 and Sev2, we protect the on-call
+rotation so that nobody carries the pager more than one week in six, and we hold
+an error budget that the team — not management — decides how to spend.
+
+Compensation: $145,000 - $175,000, plus equity and benefits. Kestrel is an equal
+opportunity employer.

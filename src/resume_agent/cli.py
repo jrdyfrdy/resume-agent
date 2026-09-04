@@ -3,6 +3,7 @@
     resume-agent build  --profile profile.example --out out/   (M0)
     resume-agent index  --profile profile.example              (M1)
     resume-agent search "kubernetes" --explain                 (M1)
+    resume-agent parse-jd --jd evals/datasets/jds/mid.txt       (M2)
 
 No `analyze` yet -- that needs the scoring machinery from M3.
 """
@@ -15,6 +16,7 @@ from typing import Annotated
 
 import typer
 
+from resume_agent.graph.nodes.parse_jd import JobDescriptionParseError, parse_job_description
 from resume_agent.kb.index import ProfileIndex, index_path_for
 from resume_agent.kb.loader import ProfileLoadError, load_profile
 from resume_agent.kb.retriever import HybridRetriever, SearchMode
@@ -22,6 +24,7 @@ from resume_agent.latex.compile import INSTALL_MESSAGE, compile_tex, find_compil
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
 from resume_agent.latex.inspect import inspect_output
+from resume_agent.llm import CREDENTIALS_MESSAGE, MissingCredentialsError, has_credentials
 
 RESUME_TEMPLATE = "jake_resume.tex.j2"
 
@@ -33,6 +36,8 @@ class ExitCode(IntEnum):
     COMPILE_FAILED = 1
     PROFILE_INVALID = 2
     NO_COMPILER = 3
+    NO_CREDENTIALS = 4
+    JD_PARSE_FAILED = 5
 
 
 app = typer.Typer(
@@ -214,6 +219,88 @@ def retriever_expansion_note(retriever: HybridRetriever, query: str) -> str:
     terms = expand_query(query, retriever.profile)
     added = terms[1:]
     return f"(expanded with: {', '.join(added)})" if added else ""
+
+
+@app.command("parse-jd")
+def parse_jd(
+    jd: Annotated[Path, typer.Option("--jd", help="File containing the job posting.")],
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Re-parse even if a cached result exists.")
+    ] = False,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Print the raw JobSpec JSON instead of a summary.")
+    ] = False,
+) -> None:
+    """Parse a job posting into a structured JobSpec.
+
+    Results are cached on a hash of the posting, the model and the prompt, so
+    re-running this while debugging downstream nodes costs nothing.
+    """
+    if not jd.is_file():
+        typer.secho(f"No such file: {jd}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED)
+
+    raw = jd.read_text(encoding="utf-8")
+
+    try:
+        spec, cache_hit = parse_job_description(raw, use_cache=not no_cache)
+    except MissingCredentialsError:
+        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
+    except JobDescriptionParseError as exc:
+        typer.secho(f"Could not parse {jd}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED) from exc
+
+    if as_json:
+        typer.echo(spec.model_dump_json(indent=2))
+        return
+
+    source = "cache" if cache_hit else "model"
+    typer.secho(f"{spec.title} at {spec.company}  [{source}]", fg=typer.colors.CYAN, bold=True)
+    typer.echo(f"  seniority : {spec.seniority}")
+    typer.echo(f"  domain    : {spec.domain}")
+    typer.echo(f"  tone      : {spec.tone}")
+    typer.echo(f"  hash      : {spec.source_hash[:16]}")
+
+    stated = spec.stated_requirements()
+    inferred = spec.inferred_requirements()
+
+    typer.echo(
+        f"\nRequirements ({len(spec.must_haves())} must-have of {len(spec.requirements)}):"
+    )
+    for requirement in sorted(stated, key=lambda r: -r.weight):
+        marker = "!" if requirement.is_must_have else " "
+        typer.echo(
+            f"  {marker} [{requirement.weight}] "
+            f"{requirement.category:10s} {requirement.text}"
+        )
+
+    # Printed separately because the distinction is the point: these are things
+    # the posting never actually asked for, and a candidate should read them
+    # differently from the stated list.
+    if inferred:
+        typer.secho("\nInferred priorities (not stated in the posting):", fg=typer.colors.YELLOW)
+        for requirement in sorted(inferred, key=lambda r: -r.weight):
+            typer.echo(f"    [{requirement.weight}] {requirement.category:10s} {requirement.text}")
+
+    if spec.ats_keywords:
+        typer.echo(f"\nATS keywords: {', '.join(spec.ats_keywords)}")
+
+    if spec.red_flags:
+        typer.secho("\nRed flags:", fg=typer.colors.RED)
+        for flag in spec.red_flags:
+            typer.echo(f"  - {flag}")
+
+
+@app.command("check-credentials")
+def check_credentials() -> None:
+    """Report whether an Anthropic API key is visible to resume-agent."""
+    if has_credentials():
+        typer.secho("ANTHROPIC_API_KEY is set.", fg=typer.colors.GREEN)
+        return
+    typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.YELLOW, err=True)
+    raise typer.Exit(ExitCode.NO_CREDENTIALS)
+
 
 if __name__ == "__main__":
     app()

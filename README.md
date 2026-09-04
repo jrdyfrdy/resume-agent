@@ -7,16 +7,19 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0 and M1 complete.** Still no LLM anywhere.
+**Status: M0, M1 and M2 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
 * **M1** — the knowledge base and hybrid retrieval: SQLite + a `sqlite-vec`
   vector index, BM25 and dense retrieval fused with Reciprocal Rank Fusion, and
-  query expansion through the `skills.yaml` alias table.
+  query expansion through the `skills.yaml` alias table. No LLM.
+* **M2** — job description parsing: a posting becomes a validated `JobSpec` via
+  structured output, cached on a hash of the posting, the model and the prompt.
+  **This is the first milestone that calls a model.**
 
-JD parsing (M2), selection (M3), tailoring and verification (M4) and the graph
-itself (M5) are not built yet.
+Selection (M3), tailoring and verification (M4) and the graph itself (M5) are
+not built yet.
 
 ---
 
@@ -76,6 +79,26 @@ compiler used, the page count and any overfull hboxes.
 
 Exit codes: `0` success · `1` compile failed · `2` profile invalid · `3` no compiler.
 
+### Parsing a job description
+
+Needs `ANTHROPIC_API_KEY`; everything else in this project works without one.
+
+```bash
+uv run resume-agent parse-jd --jd evals/datasets/jds/mid.txt
+```
+
+Prints the requirements sorted by weight, with **inferred priorities shown
+separately** — things the posting keeps circling back to without ever listing as
+a requirement. Add `--json` for the raw `JobSpec`.
+
+Parses are cached under `.cache/jd/` on `sha256(posting + model + prompt)`, so
+re-running while you iterate downstream costs nothing. The prompt hash is in the
+key deliberately: editing `prompts/parse_jd.md` invalidates the parses it
+produced rather than silently serving stale ones.
+
+Model is `claude-opus-5` (`PARSE_MODEL` in `llm.py`), about /usr/bin/bash.05–0.07 per
+posting.
+
 ### Searching the knowledge base
 
 ```bash
@@ -110,6 +133,8 @@ commands:
 | Build the example resume | `make build` | `uv run resume-agent build --profile profile.example --out out/` |
 | Build the search index | `make index` | `uv run resume-agent index --profile profile.example` |
 | Inspect retrieval | `make search Q="redis"` | `uv run resume-agent search "redis" --explain` |
+| Parse a JD | `make parse-jd` | `uv run resume-agent parse-jd --jd evals/datasets/jds/mid.txt` |
+| Regenerate JD snapshots | `make snapshots` | `REGEN_SNAPSHOTS=1 uv run pytest tests/test_parse_jd.py -m llm` |
 | Re-derive `CHARS_PER_LINE` | `make calibrate` | `uv run python scripts/calibrate_chars_per_line.py` |
 | Regenerate the golden `.tex` | `make golden` | `REGEN_GOLDEN=1 uv run pytest tests/test_render_compile.py::test_golden_tex_snapshot` |
 
@@ -126,6 +151,11 @@ src/resume_agent/
   kb/embeddings.py        local ONNX embeddings behind LangChain's interface
   kb/index.py             SQLite + sqlite-vec; staleness via a content hash
   kb/retriever.py         query expansion, BM25, dense, RRF (k=60)
+  models/job.py           JobSpec (spec §4); source_hash is computed, not generated
+  llm.py                  model id, effort, prompt loading + versioning
+  jd_cache.py             on-disk parse cache
+  prompts/parse_jd.md     the JD-parsing prompt, versioned
+  graph/nodes/parse_jd.py parse_job_description()
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
   latex/env.py            the Jinja environment with \VAR{} / \BLOCK{} delimiters
   latex/context.py        Profile -> template dict (dates, ordering, skill grouping)

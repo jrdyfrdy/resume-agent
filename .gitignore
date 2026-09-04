@@ -8,6 +8,11 @@ profile/
 # Upstream template + license, fetched by scripts, not authored here.
 .vendor/
 
+# Parsed job descriptions, keyed on a hash of the posting + model + prompt.
+# Rebuildable and potentially large; the committed record lives in
+# tests/snapshots/jd/ instead.
+.cache/
+
 # Derived search index. YAML is the source of truth; this is a rebuildable
 # cache keyed on a hash of the profile, so it must never be committed.
 .index/

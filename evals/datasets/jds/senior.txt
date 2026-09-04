@@ -1,0 +1,44 @@
+Senior Engineer, Data Platform
+Meridian Analytics — San Francisco or Remote
+
+We build the analytics layer that our customers' data teams live in every day.
+The Data Platform group owns ingestion, transformation, and the query engine
+underneath the product. We're hiring a senior engineer to work on query
+performance and cost.
+
+Why this role exists
+Our query volume tripled last year and our infrastructure bill grew faster than
+our revenue. We need someone who is genuinely good at making expensive things
+cheap — profiling, finding the real bottleneck, and shipping the fix — and who
+can bring the rest of the team along while doing it.
+
+What you'll work on
+- Profiling and optimizing our distributed query engine
+- Reducing cloud spend without degrading p99 latency
+- Designing the storage and partitioning strategy for our columnar layer
+- Setting the technical direction for the platform's next generation
+- Reviewing designs across the group and raising the bar on what we ship
+- Mentoring senior and mid-level engineers
+
+What we're looking for
+- 7+ years building data-intensive systems
+- Deep experience with query optimization and performance profiling
+- Strong SQL and a real understanding of how query planners behave
+- Experience with columnar storage formats (Parquet, Arrow) or engines like
+  DuckDB, ClickHouse, or Snowflake
+- Comfort in Python; Rust or C++ for the hot paths is welcome but not required
+- Experience owning cloud cost as an engineering problem, not a finance one
+- A track record of technical leadership without formal authority
+
+We care less about which specific technologies you've used than about whether
+you can reason from first principles about where time and money are going in a
+system.
+
+How we work
+Design docs before code for anything substantial. Code review is a conversation,
+not a gate. We deploy continuously and we keep our own pagers — the team that
+builds it runs it, and we've kept our on-call load light enough that this is
+sustainable.
+
+Compensation: $210,000 - $265,000 base, plus equity. We're remote-friendly and
+have offices in San Francisco for those who want them.

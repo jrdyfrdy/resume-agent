@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search calibrate golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd snapshots calibrate golden clean
 
 setup:
 	uv sync
@@ -30,6 +30,15 @@ index:
 Q ?= kubernetes
 search:
 	uv run resume-agent search "$(Q)" --explain
+
+JD ?= evals/datasets/jds/mid.txt
+parse-jd:
+	uv run resume-agent parse-jd --jd $(JD)
+
+# Regenerate the committed JD parse snapshots. Needs ANTHROPIC_API_KEY;
+# costs roughly $$0.20 on Claude Opus 5.
+snapshots:
+	REGEN_SNAPSHOTS=1 uv run pytest tests/test_parse_jd.py -m llm
 
 # Re-derive CHARS_PER_LINE. Run after any change to the template's geometry,
 # font or list nesting, then update the constant in latex/metrics.py.

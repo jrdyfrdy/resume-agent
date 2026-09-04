@@ -20,6 +20,7 @@ dependencies = [
     "langchain-core>=1.6.1",
     "fastembed>=0.8.0",
     "numpy>=2.5.2",
+    "langchain-anthropic>=1.7.1",
 ]
 
 [project.scripts]
@@ -44,6 +45,7 @@ testpaths = ["tests"]
 # deselect with `-m "not latex"` when no engine is installed.
 markers = [
     "latex: requires a working LaTeX compiler (tectonic/latexmk/docker)",
+    "llm: spends money on a real model call; skipped without ANTHROPIC_API_KEY",
 ]
 
 [tool.ruff]
