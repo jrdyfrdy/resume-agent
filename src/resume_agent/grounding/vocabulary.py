@@ -1,0 +1,111 @@
+r"""Which technologies a rewritten bullet is allowed to name. Spec 5, `verify_grounding`.
+
+    tech_generated = extract_tech_tokens(tailored.text)   # capitalized + known-tech regex
+    assert tech_generated <= global_skill_vocabulary
+
+Spec 3.2 on why `skills.yaml` doubles as this allow-list:
+
+    "if the generated bullet says 'Kafka' and Kafka isn't in your vocabulary,
+     that's a fabrication."
+
+**The naive version does not work.** "Capitalised tokens" flags `Cut` at the
+start of every bullet, `Redis` legitimately, and `AT&T` confusingly. Running
+that against a skills vocabulary rejects almost everything.
+
+The fix is the same one the number checker uses: compare against the source.
+
+    tech_in_rewrite - tech_in_canonical  subset-of  skill_vocabulary
+
+A technology the source already names needs no permission -- it is by definition
+grounded. Only *newly introduced* technology has to appear in `skills.yaml`, and
+that is exactly the fabrication signal, with no false positives from sentence
+openers or from proper nouns the profile itself uses.
+"""
+
+from __future__ import annotations
+
+import re
+
+# Candidate technology mentions:
+#   * an internally capitalised or all-caps token   PostgreSQL, AWS, DuckDB
+#   * a capitalised word                            Redis, Kubernetes, Cut
+#   * a token carrying technology punctuation       C#, .NET, Node.js, CI/CD
+#
+# Hyphens are NOT compound characters here, unlike in the BM25 tokenizer. In
+# prose a hyphen usually joins a compound adjective -- "Cassandra-backed",
+# "read-through" -- and keeping it whole hides the capitalised head behind a
+# lowercase tail, so "Cassandra-backed" stops looking like a technology at all.
+# Splitting lets "Cassandra" be judged on its own and drops "backed" harmlessly.
+_TECH_CANDIDATE_RE = re.compile(r"\.?[A-Za-z][A-Za-z0-9]*(?:[.#+/][A-Za-z0-9#+]+)*")
+
+# Words that appear capitalised in ordinary resume prose and are never
+# technologies -- overwhelmingly the strong past-tense verbs the tailoring prompt
+# asks for, which land at the start of a sentence and get capitalised there.
+#
+# Only needed for words a *rewrite* introduces that the source did not use: a
+# verb shared with the canonical cancels out before this list is consulted. It
+# matters when a rewrite opens with "Reduced" where the source said "Cut".
+#
+# Kept to verbs and function words on purpose. Adding plausible-sounding nouns
+# here would start hiding real fabrications, and spec 12 is explicit that the
+# check stays strict even when it is annoying.
+_NON_TECH_WORDS = frozenset(
+    {
+        "a", "achieved", "added", "an", "and", "architected", "at", "authored",
+        "automated", "built", "by", "consolidated", "created", "cut",
+        "delivered", "designed", "developed", "drove", "eliminated", "enabled",
+        "expanded", "for", "from", "grew", "halved", "held", "implemented",
+        "improved", "in", "increased", "instrumented", "integrated", "into",
+        "introduced", "launched", "led", "maintained", "migrated", "modernised",
+        "modernized", "of", "on", "optimised", "optimized", "owned",
+        "partnered", "prototyped", "rearchitected", "rebuilt", "reduced",
+        "refactored", "removed", "repartitioned", "replaced", "scaled",
+        "shipped", "simplified", "the", "to", "tripled", "with", "wrote",
+    }
+)  # fmt: skip
+
+
+def _looks_like_technology(token: str) -> bool:
+    """Whether a token is worth checking against the vocabulary at all.
+
+    Plain capitalised words count. That is deliberate: "Cassandra" and
+    "Kubernetes" carry no internal capitals and no punctuation, and excluding
+    them would let the most ordinary fabrication -- naming a technology the
+    candidate has never used -- pass unnoticed.
+
+    The false positives that would otherwise create (every sentence-opening
+    verb) are handled twice over: by the canonical-difference rule in
+    `unsupported_technologies`, and by `_NON_TECH_WORDS` for the case where a
+    rewrite opens with a different verb than the source.
+    """
+    if len(token) < 2 or token.lower() in _NON_TECH_WORDS:
+        return False
+    # Technology punctuation is a strong signal on its own: C#, .NET, Node.js.
+    if any(char in token for char in ".#+/"):
+        return True
+    # ALLCAPS (AWS, SQL), internal capitals (PostgreSQL, DuckDB), or a plain
+    # capitalised word (Redis, Kubernetes, Cassandra).
+    return token[0].isupper()
+
+
+def extract_tech_tokens(text: str) -> set[str]:
+    """Technology-looking tokens in `text`, lowercased for comparison.
+
+    Deliberately *not* every capitalised word. A plain capitalised word at the
+    start of a sentence carries no signal, and treating it as a technology makes
+    the check fire on every bullet. What survives is tokens that look like
+    technology names by their shape.
+    """
+    tokens = {match.group().strip(".,;:") for match in _TECH_CANDIDATE_RE.finditer(text)}
+    return {token.lower() for token in tokens if _looks_like_technology(token)}
+
+
+def unsupported_technologies(text: str, canonical: str, vocabulary: set[str]) -> set[str]:
+    """Technologies the rewrite introduces that are not in the skill vocabulary.
+
+    `vocabulary` is `Profile.skill_vocabulary()` -- canonical names and every
+    alias, lowercased. A non-empty result means the rewrite named a technology
+    the candidate has never recorded using.
+    """
+    introduced = extract_tech_tokens(text) - extract_tech_tokens(canonical)
+    return {token for token in introduced if token not in vocabulary}

@@ -28,6 +28,15 @@ PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 # to another model; `claude-sonnet-5` is $2 / $10 if this ever runs hot.
 PARSE_MODEL = "claude-opus-5"
 
+# The grounding judge (spec 5: "Use a cheap model"). Claude Sonnet 5 is
+# $2 / $10 per MTok against Opus's $5 / $25, and the task is a narrow entailment
+# call with the source sentence right there in the prompt.
+#
+# Not dropped to Haiku 4.5 despite "cheap", because this is the check that makes
+# the tool ethical to use (spec 12) and semantic inflation is a subtle
+# judgement. Change this one constant if the bill ever argues otherwise.
+JUDGE_MODEL = "claude-sonnet-5"
+
 # Extraction is not a reasoning-heavy task, and effort is the first quality
 # lever worth tuning per route rather than globally. Medium keeps the inference
 # quality that `is_inferred` depends on without paying for depth this workload

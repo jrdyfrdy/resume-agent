@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M3 complete.**
+**Status: M0-M4 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -22,8 +22,12 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   LLM call, a deterministic `FitReport`, and a greedy knapsack that picks what
   fits on one page under every constraint in spec §5.
 
-Tailoring and verification (M4) and the graph itself (M5) are not built yet.
-**There is no web UI** — that is M9.
+* **M4** — grounded tailoring and the fabrication gate: bullets are rewritten
+  to speak to a posting, then checked against their source by two free
+  deterministic layers and one LLM judge. At the retry cap a bullet is
+  **dropped**, never shipped unverified.
+
+The graph itself (M5) is not built yet. **There is no web UI** — that is M9.
 
 ---
 
@@ -185,6 +189,10 @@ src/resume_agent/
   graph/nodes/retrieve.py per-requirement retrieval + dedupe (no LLM)
   graph/nodes/score.py    one batched scoring call; FitReport built in Python
   graph/nodes/select.py   the greedy knapsack (no LLM)
+  graph/nodes/tailor.py   grounded rewriting + the retry cycle
+  graph/nodes/verify.py   the fabrication gate, cheap layers first
+  grounding/numbers.py    which numbers a rewrite may contain
+  grounding/vocabulary.py which technologies a rewrite may name
   latex/layout.py         line budget, measured by compiling six profile shapes
   analyze.py / report.py  the analyze pipeline and its human-readable output
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
@@ -206,6 +214,14 @@ tests/                    escape fixtures, golden .tex, a real compile
 template is written `\VAR{x | tex}`. `tests/test_env.py` parses the template and
 fails if any interpolation is missing the filter — that mechanical check is what
 makes the explicit style safe.
+
+**Nothing reaches the page unverified.** Every rewritten bullet is checked
+against its source: numbers must trace to that bullet's `metrics` or already
+appear in the source sentence, newly-named technologies must exist in
+`skills.yaml`, and a judge catches semantic inflation the regexes cannot see
+("led a team" from "collaborated with two engineers"). Two retries, then the
+bullet is dropped with a loud log — never shipped because the budget ran out.
+`tests/test_verifier.py` is the most important file in the repo.
 
 **Retrieval quality is tested without labels.** Most of the retrieval suite
 asserts invariants rather than opinions: every bullet must retrieve itself,
