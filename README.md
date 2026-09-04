@@ -7,10 +7,16 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0 complete.** The deterministic LaTeX pipeline works end to end with
-no LLM anywhere in it: `profile.example/` → Pydantic → Jinja2 → `.tex` →
-tectonic → a one-page PDF. Retrieval (M1), JD parsing (M2), selection (M3),
-tailoring and verification (M4) and the graph itself (M5) are not built yet.
+**Status: M0 and M1 complete.** Still no LLM anywhere.
+
+* **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
+  Jinja2 → `.tex` → tectonic → a one-page PDF.
+* **M1** — the knowledge base and hybrid retrieval: SQLite + a `sqlite-vec`
+  vector index, BM25 and dense retrieval fused with Reciprocal Rank Fusion, and
+  query expansion through the `skills.yaml` alias table.
+
+JD parsing (M2), selection (M3), tailoring and verification (M4) and the graph
+itself (M5) are not built yet.
 
 ---
 
@@ -21,6 +27,13 @@ Requires **Python 3.12** (managed by `uv`) and a **LaTeX compiler**.
 ```bash
 uv sync
 ```
+
+The first `search` or `index` run downloads a 67 MB ONNX embedding model
+(`BAAI/bge-small-en-v1.5`) once. It is cached per-user, not in a temp
+directory, so it survives reboots: `%LOCALAPPDATA%/resume-agent/fastembed` on
+Windows, `~/.cache/resume-agent/fastembed` elsewhere. After that everything is
+offline -- no API key, no per-query cost. Override the location with the
+`RESUME_AGENT_MODEL_CACHE` environment variable.
 
 ### LaTeX compiler
 
@@ -63,6 +76,24 @@ compiler used, the page count and any overfull hboxes.
 
 Exit codes: `0` success · `1` compile failed · `2` profile invalid · `3` no compiler.
 
+### Searching the knowledge base
+
+```bash
+uv run resume-agent search "kubernetes" --explain
+```
+
+`--explain` shows where each retriever placed a bullet next to the fused score,
+and `--mode bm25` / `--mode dense` run one retriever alone. That comparison is
+the point: querying `kubernetes` against the example profile, BM25 returns the
+single bullet that literally says Kubernetes, while dense returns a full ranking
+in which a DuckDB linter scores 0.69. Fusion keeps the exact match on top
+without throwing away the semantic recall that finds "reduce cloud spend" →
+"Cut monthly AWS spend 38%".
+
+The index lives in `.index/` (gitignored), is keyed on a hash of the profile's
+YAML, and rebuilds itself when that changes — `resume-agent index --rebuild`
+forces it.
+
 ---
 
 ## Development
@@ -77,6 +108,8 @@ commands:
 | Tests, no compiler needed | `make test-fast` | `uv run pytest -m "not latex"` |
 | Lint | `make lint` | `uv run ruff check .` |
 | Build the example resume | `make build` | `uv run resume-agent build --profile profile.example --out out/` |
+| Build the search index | `make index` | `uv run resume-agent index --profile profile.example` |
+| Inspect retrieval | `make search Q="redis"` | `uv run resume-agent search "redis" --explain` |
 | Re-derive `CHARS_PER_LINE` | `make calibrate` | `uv run python scripts/calibrate_chars_per_line.py` |
 | Regenerate the golden `.tex` | `make golden` | `REGEN_GOLDEN=1 uv run pytest tests/test_render_compile.py::test_golden_tex_snapshot` |
 
@@ -89,6 +122,10 @@ profile.example/          fake profile; what tests load. `profile/` is real data
 src/resume_agent/
   models/profile.py       the evidence-unit schema (spec §3.1, §3.2)
   kb/loader.py            YAML -> Pydantic, with cross-file integrity checks
+  kb/tokenize.py          technology-aware tokenizer ("C#" stays "c#")
+  kb/embeddings.py        local ONNX embeddings behind LangChain's interface
+  kb/index.py             SQLite + sqlite-vec; staleness via a content hash
+  kb/retriever.py         query expansion, BM25, dense, RRF (k=60)
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
   latex/env.py            the Jinja environment with \VAR{} / \BLOCK{} delimiters
   latex/context.py        Profile -> template dict (dates, ordering, skill grouping)
@@ -102,12 +139,19 @@ tests/                    escape fixtures, golden .tex, a real compile
 
 ---
 
-## Two things worth knowing before you edit
+## Three things worth knowing before you edit
 
 **The escaper is enforced, not trusted.** Every value interpolated into the
 template is written `\VAR{x | tex}`. `tests/test_env.py` parses the template and
 fails if any interpolation is missing the filter — that mechanical check is what
 makes the explicit style safe.
+
+**Retrieval quality is tested without labels.** Most of the retrieval suite
+asserts invariants rather than opinions: every bullet must retrieve itself,
+`k8s` and `kubernetes` must return identical results, and RRF's arithmetic is
+pinned exactly. On top of that sits a small hand-written relevance set in
+`tests/fixtures/retrieval_expectations.yaml` — including queries for things the
+profile genuinely lacks, which must *not* come back looking answered.
 
 **`CHARS_PER_LINE` is measured.** It is 109 for this template, derived by
 compiling probe bullets at every length from 60 to 140 and reading back from the

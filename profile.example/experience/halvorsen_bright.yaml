@@ -8,7 +8,7 @@ title: Senior Backend Engineer
 location: Oakland, CA
 start: 2023-02
 end: null # still there -- renders as "Present"
-tech: [python, fastapi, postgresql, redis, kafka, aws, terraform, observability]
+tech: [python, fastapi, postgresql, redis, kafka, aws, terraform, kubernetes, observability]
 bullets:
   - id: exp_halvorsen_bright.b1
     canonical: >-
@@ -49,4 +49,20 @@ bullets:
       rows_per_day: 2000000
     seniority_signal: senior
     evidence: Migration 0091; pg_stat_statements before/after, Aug 2024
+    confidence: verified
+
+  # Kubernetes evidence exists so that `resume-agent search "kubernetes"` --
+  # the query named in M1's definition of done -- has something real to find.
+  - id: exp_halvorsen_bright.b4
+    canonical: >-
+      Migrated 9 services from EC2 to Kubernetes on EKS, cutting median deploy
+      time from 25 to 4 minutes
+    skills: [kubernetes, docker, aws, terraform, ci-cd]
+    themes: [infrastructure, backend, devex]
+    metrics:
+      services_migrated: 9
+      deploy_before_min: 25
+      deploy_after_min: 4
+    seniority_signal: senior
+    evidence: Platform migration RFC; Argo CD deploy history, Mar-Jun 2025
     confidence: verified

@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test lint fmt build calibrate clean
+.PHONY: setup test test-fast lint fmt build index search calibrate golden clean
 
 setup:
 	uv sync
@@ -22,6 +22,14 @@ fmt:
 
 build:
 	uv run resume-agent build --profile profile.example --out out/
+
+index:
+	uv run resume-agent index --profile profile.example
+
+# Inspect retrieval by hand. Override the query: make search Q="redis caching"
+Q ?= kubernetes
+search:
+	uv run resume-agent search "$(Q)" --explain
 
 # Re-derive CHARS_PER_LINE. Run after any change to the template's geometry,
 # font or list nesting, then update the constant in latex/metrics.py.

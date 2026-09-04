@@ -11,7 +11,10 @@ from pathlib import Path
 
 import pytest
 
+from resume_agent.kb.embeddings import FastEmbedEmbeddings
+from resume_agent.kb.index import ProfileIndex
 from resume_agent.kb.loader import load_profile
+from resume_agent.kb.retriever import HybridRetriever
 from resume_agent.latex.compile import CompileResult, compile_tex, find_compiler
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
@@ -52,3 +55,34 @@ def compiled_resume(rendered_tex: str, tmp_path_factory: pytest.TempPathFactory)
     """Compile the example profile once and share the result."""
     out_dir = tmp_path_factory.mktemp("compiled_resume")
     return compile_tex(rendered_tex, out_dir, job_name="resume")
+
+
+# --- M1: retrieval -----------------------------------------------------------
+#
+# Session-scoped because loading the ONNX model and embedding the corpus is the
+# slowest thing in the suite by an order of magnitude, and every retrieval test
+# wants the same index.
+
+
+@pytest.fixture(scope="session")
+def embeddings() -> FastEmbedEmbeddings:
+    return FastEmbedEmbeddings()
+
+
+@pytest.fixture(scope="session")
+def profile_index(
+    example_profile: Profile,
+    embeddings: FastEmbedEmbeddings,
+    tmp_path_factory: pytest.TempPathFactory,
+) -> ProfileIndex:
+    db_path = tmp_path_factory.mktemp("index") / "profile.example.db"
+    return ProfileIndex.build(example_profile, PROFILE_EXAMPLE, db_path, embeddings)
+
+
+@pytest.fixture(scope="session")
+def retriever(
+    profile_index: ProfileIndex,
+    example_profile: Profile,
+    embeddings: FastEmbedEmbeddings,
+) -> HybridRetriever:
+    return HybridRetriever(profile_index, example_profile, embeddings)

@@ -8,6 +8,10 @@ profile/
 # Upstream template + license, fetched by scripts, not authored here.
 .vendor/
 
+# Derived search index. YAML is the source of truth; this is a rebuildable
+# cache keyed on a hash of the profile, so it must never be committed.
+.index/
+
 # Python
 .venv/
 __pycache__/

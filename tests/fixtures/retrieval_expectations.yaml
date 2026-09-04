@@ -1,0 +1,69 @@
+# A small, hand-written relevance set for `profile.example`.
+#
+# Be honest about what this is: it IS a labelled dataset, just a tiny one that I
+# wrote by hand against one corpus of 13 bullets. It therefore measures
+# *regression*, not retrieval quality in general -- if these pass it means
+# retrieval still behaves the way it did when someone last looked at it, not
+# that retrieval is good. The label-free invariants in test_retriever.py carry
+# the correctness weight; this file carries the judgement.
+#
+# `must_include_top3` -- the bullet is clearly the best answer and belongs in the
+#                        first three results.
+# `must_not_include`  -- a specific bullet that would be a visibly wrong answer.
+# `expect_no_strong_match` -- the honest answer is "no evidence exists". These
+#                        matter as much as the positive cases: M3's FitReport
+#                        has a `gaps` field precisely because a resume tool that
+#                        cannot say "you don't have this" is a liar.
+
+cases:
+  - query: kubernetes
+    note: the DoD query; exactly one bullet has EKS evidence
+    must_include_top3: [exp_halvorsen_bright.b4]
+
+  - query: k8s
+    note: alias-only spelling must reach the same bullet
+    must_include_top3: [exp_halvorsen_bright.b4]
+
+  - query: redis caching
+    note: two bullets genuinely involve Redis caching
+    must_include_top3: [exp_halvorsen_bright.b1]
+
+  - query: reduce cloud spend
+    note: paraphrase -- the bullet says "Cut monthly AWS spend 38%"
+    must_include_top3: [exp_northwind_data.b2]
+
+  - query: continuous integration pipeline
+    note: paraphrase -- the bullet says "sharding pytest across GitHub Actions"
+    must_include_top3: [exp_northwind_data.b3]
+
+  - query: database query performance tuning
+    note: paraphrase -- the bullet is the events-table repartition on user_id
+    must_include_top3: [exp_halvorsen_bright.b3]
+
+  - query: C#
+    note: exact-token retrieval; the reason BM25 is in the pipeline at all
+    must_include_top3: [exp_northwind_data.b1]
+
+  - query: message queue reliability
+    note: paraphrase -- Kafka consumers and a dead-letter queue
+    must_include_top3: [exp_halvorsen_bright.b2]
+
+  - query: frontend dashboard
+    note: the only React work in the profile
+    must_include_top3: [prj_vitals_dashboard.b1]
+
+  - query: distributed tracing
+    note: paraphrase -- OpenTelemetry instrumentation
+    must_include_top3: [prj_vitals_dashboard.b2]
+
+  - query: columnar analytics engine
+    note: paraphrase -- the DuckDB predicate-pushdown bullet
+    must_include_top3: [prj_ledgerlint.b2]
+
+  - query: rust systems programming
+    note: a real gap -- Rust appears nowhere in the profile
+    expect_no_strong_match: true
+
+  - query: machine learning model training
+    note: another real gap; nothing in this profile is ML work
+    expect_no_strong_match: true

@@ -15,6 +15,11 @@ dependencies = [
     "typer>=0.12",
     "pypdf>=5.0",
     "pyyaml>=6.0",
+    "sqlite-vec>=0.1.9",
+    "rank-bm25>=0.2.2",
+    "langchain-core>=1.6.1",
+    "fastembed>=0.8.0",
+    "numpy>=2.5.2",
 ]
 
 [project.scripts]

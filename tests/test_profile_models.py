@@ -26,7 +26,7 @@ def test_example_profile_loads(example_profile: Profile) -> None:
     assert example_profile.identity.name == "John Doe"
     assert len(example_profile.experience) == 2
     assert len(example_profile.projects) == 3
-    assert len(example_profile.all_bullets()) == 12
+    assert len(example_profile.all_bullets()) == 13
 
 
 def test_example_profile_carries_the_escape_hazards(example_profile: Profile) -> None:
