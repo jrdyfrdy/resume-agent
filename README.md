@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0, M1 and M2 complete.**
+**Status: M0-M3 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -18,8 +18,12 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   structured output, cached on a hash of the posting, the model and the prompt.
   **This is the first milestone that calls a model.**
 
-Selection (M3), tailoring and verification (M4) and the graph itself (M5) are
-not built yet.
+* **M3** — scoring, selection and `analyze`: batched relevance scoring in one
+  LLM call, a deterministic `FitReport`, and a greedy knapsack that picks what
+  fits on one page under every constraint in spec §5.
+
+Tailoring and verification (M4) and the graph itself (M5) are not built yet.
+**There is no web UI** — that is M9.
 
 ---
 
@@ -99,6 +103,26 @@ produced rather than silently serving stale ones.
 Model is `claude-opus-5` (`PARSE_MODEL` in `llm.py`), about /usr/bin/bash.05–0.07 per
 posting.
 
+### Analysing a posting  ← the one you'll use daily
+
+```bash
+uv run resume-agent analyze --jd evals/datasets/jds/mid.txt
+```
+
+Answers "should I apply, and what am I missing?". Prints the recommendation
+first, then **gaps before coverage** — what you lack is actionable, what you have
+is reassurance. Must-have gaps are separated from nice-to-haves, and inferred
+requirements are marked so you never think you failed to meet something the
+posting never asked for.
+
+It also shows what selection chose for the resume and, for everything it didn't,
+the constraint that excluded it — because "why is my best bullet missing?" is
+the first question anyone asks of a selector.
+
+`--strict` drops bullets marked `confidence: claim`. `--json` emits the raw
+`FitReport`. Needs `ANTHROPIC_API_KEY`; costs roughly $0.20 per new posting and
+nothing on a re-run.
+
 ### Searching the knowledge base
 
 ```bash
@@ -134,6 +158,8 @@ commands:
 | Build the search index | `make index` | `uv run resume-agent index --profile profile.example` |
 | Inspect retrieval | `make search Q="redis"` | `uv run resume-agent search "redis" --explain` |
 | Parse a JD | `make parse-jd` | `uv run resume-agent parse-jd --jd evals/datasets/jds/mid.txt` |
+| Analyse a JD | `make analyze` | `uv run resume-agent analyze --jd evals/datasets/jds/mid.txt` |
+| Re-derive the line budget | `make calibrate-budget` | `uv run python scripts/calibrate_line_budget.py` |
 | Regenerate JD snapshots | `make snapshots` | `REGEN_SNAPSHOTS=1 uv run pytest tests/test_parse_jd.py -m llm` |
 | Re-derive `CHARS_PER_LINE` | `make calibrate` | `uv run python scripts/calibrate_chars_per_line.py` |
 | Regenerate the golden `.tex` | `make golden` | `REGEN_GOLDEN=1 uv run pytest tests/test_render_compile.py::test_golden_tex_snapshot` |
@@ -156,6 +182,11 @@ src/resume_agent/
   jd_cache.py             on-disk parse cache
   prompts/parse_jd.md     the JD-parsing prompt, versioned
   graph/nodes/parse_jd.py parse_job_description()
+  graph/nodes/retrieve.py per-requirement retrieval + dedupe (no LLM)
+  graph/nodes/score.py    one batched scoring call; FitReport built in Python
+  graph/nodes/select.py   the greedy knapsack (no LLM)
+  latex/layout.py         line budget, measured by compiling six profile shapes
+  analyze.py / report.py  the analyze pipeline and its human-readable output
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
   latex/env.py            the Jinja environment with \VAR{} / \BLOCK{} delimiters
   latex/context.py        Profile -> template dict (dates, ordering, skill grouping)
@@ -182,6 +213,12 @@ asserts invariants rather than opinions: every bullet must retrieve itself,
 pinned exactly. On top of that sits a small hand-written relevance set in
 `tests/fixtures/retrieval_expectations.yaml` — including queries for things the
 profile genuinely lacks, which must *not* come back looking answered.
+
+**Both layout constants are measured, not guessed.** `CHARS_PER_LINE = 109`
+comes from compiling probe bullets at lengths 60–140 and reading back where
+wrapping starts. The one-page line budget comes from compiling six different
+profile shapes and solving for each element's cost; the resulting additive model
+reproduces all six measurements with zero error, and `test_layout.py` pins that.
 
 **`CHARS_PER_LINE` is measured.** It is 109 for this template, derived by
 compiling probe bullets at every length from 60 to 140 and reading back from the

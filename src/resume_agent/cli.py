@@ -4,8 +4,7 @@
     resume-agent index  --profile profile.example              (M1)
     resume-agent search "kubernetes" --explain                 (M1)
     resume-agent parse-jd --jd evals/datasets/jds/mid.txt       (M2)
-
-No `analyze` yet -- that needs the scoring machinery from M3.
+    resume-agent analyze  --jd evals/datasets/jds/mid.txt       (M3)
 """
 
 from __future__ import annotations
@@ -16,6 +15,7 @@ from typing import Annotated
 
 import typer
 
+from resume_agent.analyze import analyze as run_analysis
 from resume_agent.graph.nodes.parse_jd import JobDescriptionParseError, parse_job_description
 from resume_agent.kb.index import ProfileIndex, index_path_for
 from resume_agent.kb.loader import ProfileLoadError, load_profile
@@ -25,6 +25,7 @@ from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
 from resume_agent.latex.inspect import inspect_output
 from resume_agent.llm import CREDENTIALS_MESSAGE, MissingCredentialsError, has_credentials
+from resume_agent.report import render_fit_report
 
 RESUME_TEMPLATE = "jake_resume.tex.j2"
 
@@ -300,6 +301,49 @@ def check_credentials() -> None:
         return
     typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.YELLOW, err=True)
     raise typer.Exit(ExitCode.NO_CREDENTIALS)
+
+
+@app.command()
+def analyze(
+    jd: Annotated[Path, typer.Option("--jd", help="File containing the job posting.")],
+    profile: Annotated[
+        Path, typer.Option("--profile", help="Profile directory to match against.")
+    ] = Path("profile.example"),
+    strict: Annotated[
+        bool, typer.Option("--strict", help="Exclude bullets marked confidence: claim.")
+    ] = False,
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Re-parse the posting even if cached.")
+    ] = False,
+    as_json: Annotated[
+        bool, typer.Option("--json", help="Emit the FitReport as JSON instead of a summary.")
+    ] = False,
+) -> None:
+    """Score a profile against a job posting and report the fit.
+
+    Spec 8 calls this the first genuinely useful deliverable: it answers
+    "should I apply, and what am I missing?" before any resume is generated.
+    """
+    if not jd.is_file():
+        typer.secho(f"No such file: {jd}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED)
+
+    loaded = _load_or_exit(profile)
+
+    try:
+        result = run_analysis(jd, loaded, profile, strict=strict, use_cache=not no_cache)
+    except MissingCredentialsError:
+        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
+    except JobDescriptionParseError as exc:
+        typer.secho(f"Could not parse {jd}: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED) from exc
+
+    if as_json:
+        typer.echo(result.fit.model_dump_json(indent=2))
+        return
+
+    render_fit_report(result)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search parse-jd snapshots calibrate golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd analyze snapshots calibrate calibrate-budget golden clean
 
 setup:
 	uv sync
@@ -35,6 +35,9 @@ JD ?= evals/datasets/jds/mid.txt
 parse-jd:
 	uv run resume-agent parse-jd --jd $(JD)
 
+analyze:
+	uv run resume-agent analyze --jd $(JD)
+
 # Regenerate the committed JD parse snapshots. Needs ANTHROPIC_API_KEY;
 # costs roughly $$0.20 on Claude Opus 5.
 snapshots:
@@ -44,6 +47,10 @@ snapshots:
 # font or list nesting, then update the constant in latex/metrics.py.
 calibrate:
 	uv run python scripts/calibrate_chars_per_line.py
+
+# Re-derive the one-page line budget. Run after any template geometry change.
+calibrate-budget:
+	uv run python scripts/calibrate_line_budget.py
 
 # Regenerate the golden .tex snapshot. Deliberate two-step: run this, then read
 # the diff before committing it.

@@ -28,6 +28,7 @@ resume-agent = "resume_agent.cli:app"
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.167.1",
     "pytest>=8.3",
     "ruff>=0.6",
 ]
