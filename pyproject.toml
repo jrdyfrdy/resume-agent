@@ -21,6 +21,7 @@ dependencies = [
     "fastembed>=0.8.0",
     "numpy>=2.5.2",
     "langchain-anthropic>=1.7.1",
+    "langgraph>=1.2.11",
 ]
 
 [project.scripts]

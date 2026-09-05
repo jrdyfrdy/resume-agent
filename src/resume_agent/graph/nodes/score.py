@@ -26,7 +26,8 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
-from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt
+from resume_agent.cache import ModelListCache, content_key
+from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt, prompt_version
 from resume_agent.models.fit import (
     COVERED_THRESHOLD,
     PARTIAL_THRESHOLD,
@@ -86,12 +87,24 @@ def _render_requirements(job: JobSpec) -> str:
     return "\n".join(lines)
 
 
+def scoring_cache_key(job: JobSpec, bullet_ids: list[str], model: str) -> str:
+    """Identity of "this posting, these candidates, this prompt, this model"."""
+    return content_key(
+        job.source_hash,
+        "|".join(sorted(bullet_ids)),
+        prompt_version(PROMPT_NAME),
+        model,
+    )
+
+
 def score_fit(
     job: JobSpec,
     bullet_ids: list[str],
     profile: Profile,
     *,
     llm: BaseChatModel | None = None,
+    use_cache: bool = True,
+    model: str = PARSE_MODEL,
 ) -> list[EvidenceMatch]:
     """One batched call scoring every plausible (bullet, requirement) pair.
 
@@ -99,11 +112,23 @@ def score_fit(
     with a warning rather than trusted: an invented bullet id is the retrieval
     equivalent of a fabricated claim, and it would flow into selection as
     evidence for something the candidate never did.
+
+    Cached because this is one of the two calls that dominate a run's cost, and
+    M5's layout loop re-runs everything downstream of it several times per
+    posting without the scores ever changing.
     """
     if not job.requirements or not bullet_ids:
         return []
 
-    llm = llm or build_chat_model(model=PARSE_MODEL)
+    cache = ModelListCache(EvidenceMatch, "scores")
+    key = scoring_cache_key(job, bullet_ids, model)
+    if use_cache:
+        cached = cache.get(key)
+        if cached is not None:
+            logger.info("score_fit: cache hit (%d matches)", len(cached))
+            return cached
+
+    llm = llm or build_chat_model(model=model)
     structured = llm.with_structured_output(ScoringResult)
 
     user_content = (
@@ -141,6 +166,9 @@ def score_fit(
                 rationale=scored.rationale,
             )
         )
+
+    if use_cache:
+        cache.put(key, matches)
     return matches
 
 

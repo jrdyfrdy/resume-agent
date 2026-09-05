@@ -21,13 +21,9 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict
 
-from resume_agent.graph.nodes.verify import (
-    MAX_GROUNDING_ATTEMPTS,
-    drop_unverified,
-    verify_grounding,
-)
+from resume_agent.cache import ModelListCache, content_key
 from resume_agent.latex.metrics import CHARS_PER_LINE, estimate_lines
-from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt
+from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt, prompt_version
 from resume_agent.models.job import JobSpec
 from resume_agent.models.profile import Bullet, Profile
 from resume_agent.models.resume import TailoredBullet, TailoredBulletFields
@@ -47,6 +43,16 @@ class TailoringResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     bullets: list[TailoredBulletFields]
+
+
+def tailoring_cache_key(job: JobSpec, bullet_ids: list[str], model: str) -> str:
+    """Identity of "these bullets, rewritten for this posting, first attempt"."""
+    return content_key(
+        job.source_hash,
+        "|".join(sorted(bullet_ids)),
+        prompt_version(PROMPT_NAME),
+        model,
+    )
 
 
 def target_characters(source: Bullet, lines_allowed: int | None = None) -> int:
@@ -86,16 +92,35 @@ def tailor_bullets(
     *,
     critiques: dict[str, list[str]] | None = None,
     llm: BaseChatModel | None = None,
+    use_cache: bool = True,
+    model: str = PARSE_MODEL,
 ) -> list[TailoredBullet]:
     """Rewrite a batch of bullets in one call.
 
     Called once per section by the caller, per spec 5's "batch by section".
+
+    **Only the first attempt is cached.** A retry exists precisely because the
+    previous output was rejected, and its prompt carries critiques that change
+    what a correct answer looks like -- so caching a retry would either serve
+    back the rejected text or key on critique strings that never repeat. Caching
+    the critique-free first attempt captures nearly all the saving anyway,
+    because that is the call every run makes.
     """
     if not sources:
         return []
 
     critiques = critiques or {}
-    llm = llm or build_chat_model(model=PARSE_MODEL)
+    cache = ModelListCache(TailoredBullet, "tailored")
+    cacheable = not any(critiques.get(source.id) for source in sources)
+    key = tailoring_cache_key(job, [s.id for s in sources], model)
+
+    if use_cache and cacheable:
+        cached = cache.get(key)
+        if cached is not None:
+            logger.info("tailor_bullets: cache hit (%d bullets)", len(cached))
+            return cached
+
+    llm = llm or build_chat_model(model=model)
     structured = llm.with_structured_output(TailoringResult)
 
     vocabulary = sorted(profile.skill_vocabulary())
@@ -133,73 +158,7 @@ def tailor_bullets(
                 estimated_lines=estimate_lines(fields.text),
             )
         )
+
+    if use_cache and cacheable:
+        cache.put(key, tailored)
     return tailored
-
-
-def tailor_until_grounded(
-    job: JobSpec,
-    sources: list[Bullet],
-    profile: Profile,
-    *,
-    llm: BaseChatModel | None = None,
-    judge_llm: BaseChatModel | None = None,
-    use_judge: bool = True,
-    max_attempts: int = MAX_GROUNDING_ATTEMPTS,
-) -> tuple[list[TailoredBullet], list[str]]:
-    """Drive the grounding cycle. Returns `(verified_bullets, dropped_ids)`.
-
-    Spec 2 draws this as a graph cycle (`verify_grounding` -> `tailor_bullets`),
-    and M5 will express it as edges in `graph/build.py`. It lives here as a
-    plain loop for now because the cap behaviour -- the part that matters -- is
-    testable without a StateGraph, and CLAUDE.md rule 7 requires it to exist and
-    be defined before anything ships.
-
-    At the cap the bullet is **dropped**, not shipped unverified. A weaker
-    resume is a far better outcome than a false claim on it.
-    """
-    vocabulary = profile.skill_vocabulary()
-    remaining = list(sources)
-    critiques: dict[str, list[str]] = {}
-    verified: list[TailoredBullet] = []
-    dropped: list[str] = []
-
-    # `max_attempts` retries means max_attempts + 1 total passes: the first
-    # attempt is not a retry.
-    for attempt in range(max_attempts + 1):
-        if not remaining:
-            break
-
-        candidates = tailor_bullets(job, remaining, profile, critiques=critiques, llm=llm)
-        by_id = {candidate.source_id: candidate for candidate in candidates}
-
-        still_failing: list[Bullet] = []
-        for source in remaining:
-            candidate = by_id.get(source.id)
-            if candidate is None:
-                critiques.setdefault(source.id, []).append("no rewrite was returned")
-                still_failing.append(source)
-                continue
-
-            result = verify_grounding(
-                candidate, source, vocabulary, judge=use_judge, llm=judge_llm
-            )
-            if result.passed:
-                verified.append(candidate)
-            else:
-                logger.info(
-                    "grounding attempt %d failed for %s at layer %s: %s",
-                    attempt + 1,
-                    source.id,
-                    result.layer,
-                    result.critique,
-                )
-                critiques.setdefault(source.id, []).append(result.critique or "rejected")
-                still_failing.append(source)
-
-        remaining = still_failing
-
-    for source in remaining:
-        drop_unverified(source, critiques.get(source.id, []))
-        dropped.append(source.id)
-
-    return verified, dropped

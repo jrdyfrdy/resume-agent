@@ -127,24 +127,56 @@ def _education_row(entry: EducationEntry) -> dict[str, Any]:
     }
 
 
-def _experience_row(entry: ExperienceEntry) -> dict[str, Any]:
+def _bullet_texts(
+    entry: ExperienceEntry | ProjectEntry,
+    overrides: dict[str, str] | None,
+    allowed_ids: set[str] | None,
+) -> list[str]:
+    """The lines to print under one entry.
+
+    Three modes, in one place so experience and projects cannot drift apart:
+
+    * no arguments -- every bullet, as written. This is M0's behaviour and what
+      `resume-agent build` still does.
+    * `allowed_ids` -- only the bullets selection chose (M3).
+    * `overrides` -- the verified rewrite in place of the canonical text (M4).
+
+    Bullets keep their authored order regardless, because a resume is read
+    chronologically even though selection ranks by score.
+    """
+    texts = []
+    for bullet in entry.bullets:
+        if allowed_ids is not None and bullet.id not in allowed_ids:
+            continue
+        texts.append((overrides or {}).get(bullet.id, bullet.canonical))
+    return texts
+
+
+def _experience_row(
+    entry: ExperienceEntry,
+    overrides: dict[str, str] | None = None,
+    allowed_ids: set[str] | None = None,
+) -> dict[str, Any]:
     return {
         "title": entry.title,
         "dates": format_date_range(entry.start, entry.end),
         "org": entry.org,
         "location": entry.location,
-        # M0 has no tailoring node, so a bullet's rendered text *is* its
-        # canonical text. M4 replaces this with the verified rewrite.
-        "bullets": [b.canonical for b in entry.bullets],
+        "bullets": _bullet_texts(entry, overrides, allowed_ids),
     }
 
 
-def _project_row(entry: ProjectEntry, display_index: dict[str, str]) -> dict[str, Any]:
+def _project_row(
+    entry: ProjectEntry,
+    display_index: dict[str, str],
+    overrides: dict[str, str] | None = None,
+    allowed_ids: set[str] | None = None,
+) -> dict[str, Any]:
     return {
         "name": entry.name,
         "tech": ", ".join(resolve_tech_names(entry.tech, display_index)),
         "dates": format_date_range(entry.start, entry.end),
-        "bullets": [b.canonical for b in entry.bullets],
+        "bullets": _bullet_texts(entry, overrides, allowed_ids),
     }
 
 
@@ -158,9 +190,20 @@ def _sort_key_most_recent_first(entry: ExperienceEntry | ProjectEntry) -> tuple[
     return (entry.end or "9999-99", entry.start)
 
 
-def build_resume_context(profile: Profile) -> dict[str, Any]:
-    """Everything `jake_resume.tex.j2` needs, and nothing else."""
+def build_resume_context(
+    profile: Profile,
+    *,
+    selected_ids: list[str] | None = None,
+    tailored_text: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Everything `jake_resume.tex.j2` needs, and nothing else.
+
+    `selected_ids` restricts output to what M3's knapsack chose; `tailored_text`
+    substitutes M4's verified rewrites. Passing neither renders the whole
+    profile verbatim, which is what M0's `build` command does.
+    """
     display_index = build_display_name_index(profile.skills)
+    allowed = set(selected_ids) if selected_ids is not None else None
 
     experience = sorted(profile.experience, key=_sort_key_most_recent_first, reverse=True)
     projects = sorted(profile.projects, key=_sort_key_most_recent_first, reverse=True)
@@ -169,6 +212,16 @@ def build_resume_context(profile: Profile) -> dict[str, Any]:
         key=lambda e: (e.end or "9999-99", e.start),
         reverse=True,
     )
+
+    experience_rows = [_experience_row(e, tailored_text, allowed) for e in experience]
+    project_rows = [_project_row(p, display_index, tailored_text, allowed) for p in projects]
+
+    # An entry whose every bullet was dropped must not print as a bare heading.
+    # This also keeps the rendered page honest with the line budget selection
+    # spent, which charges for furniture only when the furniture appears.
+    if allowed is not None:
+        experience_rows = [row for row in experience_rows if row["bullets"]]
+        project_rows = [row for row in project_rows if row["bullets"]]
 
     return {
         "identity": {
@@ -179,7 +232,7 @@ def build_resume_context(profile: Profile) -> dict[str, Any]:
             "links": [{"label": link.label, "url": link.url} for link in profile.identity.links],
         },
         "education": [_education_row(e) for e in education],
-        "experience": [_experience_row(e) for e in experience],
-        "projects": [_project_row(p, display_index) for p in projects],
+        "experience": experience_rows,
+        "projects": project_rows,
         "skill_groups": group_skills_by_category(profile.skills),
     }

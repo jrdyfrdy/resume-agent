@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from resume_agent.cache import CACHE_DIR_ENV_VAR
 from resume_agent.kb.embeddings import FastEmbedEmbeddings
 from resume_agent.kb.index import ProfileIndex
 from resume_agent.kb.loader import load_profile
@@ -86,3 +87,15 @@ def retriever(
     embeddings: FastEmbedEmbeddings,
 ) -> HybridRetriever:
     return HybridRetriever(profile_index, example_profile, embeddings)
+
+
+@pytest.fixture(autouse=True)
+def isolated_model_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch) -> None:
+    """Give every test its own empty model-output cache.
+
+    Autouse and non-negotiable. Without it, the first test to call a fake LLM
+    writes a cache entry that satisfies the next test's "was the model called?"
+    assertion -- so the suite would pass while the code under test did nothing,
+    which is the worst kind of green.
+    """
+    monkeypatch.setenv(CACHE_DIR_ENV_VAR, str(tmp_path_factory.mktemp("model_cache")))
