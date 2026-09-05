@@ -37,9 +37,7 @@ class Requirement(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    text: str = Field(
-        description="The requirement, in the posting's own words where possible."
-    )
+    text: str = Field(description="The requirement, in the posting's own words where possible.")
     category: RequirementCategory
     weight: int = Field(ge=1, le=5, description="How load-bearing this is in the posting, 1-5.")
     is_must_have: bool = Field(description="True for hard requirements, false for nice-to-haves.")

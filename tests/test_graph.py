@@ -219,7 +219,14 @@ def seeded(profile_dir: Path, out_dir: Path, **options: Any) -> AgentState:
     return initial_state(
         RAW_JD,
         profile_dir,
-        RunOptions(out_dir=str(out_dir), use_judge=False, **options),
+        RunOptions(
+            out_dir=str(out_dir),
+            use_judge=False,
+            # These tests exercise the layout loop; M6's subgraph has its own
+            # file. Left on, every one of them would need a letter writer too.
+            write_cover_letter=False,
+            **options,
+        ),
     )
 
 
@@ -341,7 +348,13 @@ def test_route_overfull_goes_to_retailor() -> None:
 
 def test_route_clean_goes_to_finalize() -> None:
     state = _state(compile_log="fine", pdf_path="x.pdf", page_count=1)
-    assert route_after_inspect(state) == "finalize"
+    assert route_after_inspect(state) == "layout_ok"
+
+
+def test_route_skips_the_letter_when_disabled() -> None:
+    state = _state(compile_log="fine", pdf_path="x.pdf", page_count=1)
+    state["options"] = RunOptions(write_cover_letter=False)
+    assert route_after_inspect(state) == "skip_letter"
 
 
 def test_route_respects_the_layout_cap() -> None:
@@ -351,7 +364,7 @@ def test_route_respects_the_layout_cap() -> None:
         pdf_path=None,
         layout_attempts=MAX_LAYOUT_ATTEMPTS,
     )
-    assert route_after_inspect(state) == "finalize"
+    assert route_after_inspect(state) == "layout_ok"
 
 
 def test_route_after_verify_loops_while_bullets_are_unverified() -> None:

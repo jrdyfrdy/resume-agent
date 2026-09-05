@@ -138,9 +138,7 @@ def recommend(
     """Turn a fit score into advice, with a hard floor on must-have coverage."""
     must_haves = [r for r in requirements if r.is_must_have]
     if must_haves:
-        covered = sum(
-            1 for r in must_haves if best_relevance.get(r.text, 0.0) >= COVERED_THRESHOLD
-        )
+        covered = sum(1 for r in must_haves if best_relevance.get(r.text, 0.0) >= COVERED_THRESHOLD)
         must_have_coverage = covered / len(must_haves)
     else:
         must_have_coverage = 1.0

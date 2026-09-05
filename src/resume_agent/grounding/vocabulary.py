@@ -88,24 +88,77 @@ def _looks_like_technology(token: str) -> bool:
     return token[0].isupper()
 
 
-def extract_tech_tokens(text: str) -> set[str]:
+# Where a sentence begins: the start of the text, after terminal punctuation, or
+# at the start of a line -- optionally past a markdown marker, because the
+# narratives are markdown and `# How I learn` capitalises "How" for exactly the
+# same positional reason a sentence opener does.
+_SENTENCE_START_RE = re.compile(
+    r"(?:(?<=[.!?])\s+|^[ \t]*(?:[#>*\-]+[ \t]*)?)([A-Za-z][A-Za-z0-9]*)",
+    re.MULTILINE,
+)
+
+
+def _sentence_initial_words(text: str) -> set[str]:
+    return {match.group(1).lower() for match in _SENTENCE_START_RE.finditer(text)}
+
+
+def extract_tech_tokens(text: str, *, prose: bool = False) -> set[str]:
     """Technology-looking tokens in `text`, lowercased for comparison.
 
-    Deliberately *not* every capitalised word. A plain capitalised word at the
-    start of a sentence carries no signal, and treating it as a technology makes
-    the check fire on every bullet. What survives is tokens that look like
-    technology names by their shape.
+    `prose=True` additionally ignores **plain** capitalised words that sit at the
+    start of a sentence.
+
+    That mode exists for the cover letter, and the reason is worth understanding.
+    For a rewritten bullet the canonical-difference rule handles sentence
+    openers: the source starts with a capitalised verb too, so it cancels. A
+    letter is many sentences of ordinary prose, and its openers -- "Separately",
+    "Your", "At" -- appear nowhere in the knowledge base, so every one of them
+    would be reported as an invented technology. (Found exactly that way: the
+    first letter run rejected itself over the word "Separately".)
+
+    A token that looks technological by *shape* is still flagged wherever it
+    appears: internal capitals (PostgreSQL), all caps (AWS), or technology
+    punctuation (C#, .NET, Node.js). The narrow hole this leaves is a plain
+    capitalised unknown technology as the very first word of a sentence --
+    "Cassandra backs the product." Accepted knowingly: the alternative makes the
+    check unusable on prose, and the judge still reads the whole letter.
     """
     tokens = {match.group().strip(".,;:") for match in _TECH_CANDIDATE_RE.finditer(text)}
-    return {token.lower() for token in tokens if _looks_like_technology(token)}
+    candidates = {token for token in tokens if _looks_like_technology(token)}
+
+    if prose:
+        openers = _sentence_initial_words(text)
+        candidates = {
+            token
+            for token in candidates
+            if token.lower() not in openers or not _is_plain_capitalised(token)
+        }
+
+    return {token.lower() for token in candidates}
 
 
-def unsupported_technologies(text: str, canonical: str, vocabulary: set[str]) -> set[str]:
-    """Technologies the rewrite introduces that are not in the skill vocabulary.
+def _is_plain_capitalised(token: str) -> bool:
+    """A capitalised word with no other technology signal: `Separately`, `Cassandra`."""
+    if any(char in token for char in ".#+/"):
+        return False
+    if token.isupper():
+        return False
+    return token[:1].isupper() and not any(char.isupper() for char in token[1:])
+
+
+def unsupported_technologies(
+    text: str, canonical: str, vocabulary: set[str], *, prose: bool = False
+) -> set[str]:
+    """Technologies the text introduces that are not in the skill vocabulary.
 
     `vocabulary` is `Profile.skill_vocabulary()` -- canonical names and every
-    alias, lowercased. A non-empty result means the rewrite named a technology
-    the candidate has never recorded using.
+    alias, lowercased. A non-empty result means the text named a technology the
+    candidate has never recorded using.
+
+    `prose=True` for multi-sentence text such as a cover letter; see
+    `extract_tech_tokens`.
     """
-    introduced = extract_tech_tokens(text) - extract_tech_tokens(canonical)
+    introduced = extract_tech_tokens(text, prose=prose) - extract_tech_tokens(
+        canonical, prose=prose
+    )
     return {token for token in introduced if token not in vocabulary}

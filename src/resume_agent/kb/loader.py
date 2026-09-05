@@ -33,6 +33,7 @@ SKILLS_FILE = "skills.yaml"
 CERTIFICATIONS_FILE = "certifications.yaml"
 EXPERIENCE_DIR = "experience"
 PROJECTS_DIR = "projects"
+NARRATIVES_DIR = "narratives"
 
 
 def load_profile(profile_dir: Path) -> Profile:
@@ -53,6 +54,7 @@ def load_profile(profile_dir: Path) -> Profile:
     skills = _read_keyed_list(profile_dir / SKILLS_FILE, key="skills", required=True)
     certifications = _read_keyed_list(profile_dir / CERTIFICATIONS_FILE, key="certifications")
 
+    narratives = _read_narratives(profile_dir / NARRATIVES_DIR)
     experience = _read_entry_dir(profile_dir / EXPERIENCE_DIR)
     projects = _read_entry_dir(profile_dir / PROJECTS_DIR)
 
@@ -61,6 +63,7 @@ def load_profile(profile_dir: Path) -> Profile:
         "education": education,
         "skills": skills,
         "certifications": certifications,
+        "narratives": narratives,
         "experience": experience,
         "projects": projects,
     }
@@ -109,6 +112,29 @@ def _read_keyed_list(path: Path, *, key: str, required: bool = False) -> list[An
     if not isinstance(items, list):
         raise ProfileLoadError(f"{path}: key {key!r} must hold a list, got {type(items).__name__}")
     return items
+
+
+def _read_narratives(directory: Path) -> list[dict[str, str]]:
+    """Read every `*.md` in `narratives/`, one entry per file.
+
+    README.md is skipped: it documents the directory for a human rather than
+    describing the profile's owner, and feeding it to a cover-letter prompt
+    would be feeding the model instructions meant for you.
+
+    Sorted by filename, like the entry directories, so load order is
+    deterministic and prompts are byte-stable between runs.
+    """
+    if not directory.is_dir():
+        return []
+    narratives = []
+    for path in sorted(directory.glob("*.md")):
+        if path.stem.lower() == "readme":
+            continue
+        try:
+            narratives.append({"name": path.stem, "content": path.read_text(encoding="utf-8")})
+        except OSError as exc:
+            raise ProfileLoadError(f"cannot read {path}: {exc}") from exc
+    return narratives
 
 
 def _read_entry_dir(directory: Path) -> list[dict[str, Any]]:

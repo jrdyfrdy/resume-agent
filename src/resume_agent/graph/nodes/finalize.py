@@ -24,13 +24,25 @@ from datetime import date
 from pathlib import Path
 
 from resume_agent.graph.state import AgentState
+from resume_agent.kb.loader import load_profile
+from resume_agent.latex.compile import compile_tex
+from resume_agent.latex.env import render_template
 from resume_agent.llm import JUDGE_MODEL, PARSE_MODEL, prompt_version
 
 logger = logging.getLogger(__name__)
 
 # Prompts whose versions go into run.json. Changing any of them changes the
 # output, so a run record that did not name them could not be reproduced.
-TRACKED_PROMPTS = ["parse_jd", "score_fit", "tailor_bullets", "verify_grounding"]
+TRACKED_PROMPTS = [
+    "parse_jd",
+    "score_fit",
+    "tailor_bullets",
+    "verify_grounding",
+    "write_cover_letter",
+    "verify_letter",
+]
+
+COVER_LETTER_TEMPLATE = "cover_letter.tex.j2"
 
 
 def slugify(text: str) -> str:
@@ -81,6 +93,10 @@ def finalize(state: AgentState) -> dict:
         final_pdf = run_dir / "resume.pdf"
         shutil.copyfile(pdf_path, final_pdf)
 
+    letter = state.get("cover_letter")
+    if letter is not None:
+        _write_cover_letter(state, letter, run_dir)
+
     fit = state.get("fit_report")
     run_record = {
         "date": date.today().isoformat(),
@@ -91,6 +107,8 @@ def finalize(state: AgentState) -> dict:
         "selected_bullet_ids": state.get("selected", []),
         "tailored_bullets": [t.model_dump() for t in state.get("tailored", [])],
         "dropped_bullets": state.get("dropped_bullets", []),
+        "cover_letter": letter.model_dump() if letter else None,
+        "letter_attempts": state.get("letter_attempts", 0),
         "models": {"generation": PARSE_MODEL, "judge": JUDGE_MODEL},
         "prompt_versions": {name: prompt_version(name) for name in TRACKED_PROMPTS},
         "profile_git_sha": profile_git_sha(Path(state["profile_path"])),
@@ -108,3 +126,39 @@ def finalize(state: AgentState) -> dict:
         "out_dir": str(run_dir),
         "pdf_path": str(final_pdf) if final_pdf else state.get("pdf_path"),
     }
+
+
+def _write_cover_letter(state: AgentState, letter, run_dir: Path) -> None:
+    """Render and compile the letter into the run directory.
+
+    A failed letter compile is recorded, not fatal. The resume is the artifact
+    the run exists to produce, and the letter has no layout loop behind it --
+    its length is already enforced by word count before it ever reaches LaTeX,
+    so there is no feedback for a compile failure to drive.
+    """
+    profile = load_profile(Path(state["profile_path"]))
+    job = state.get("job_spec")
+
+    tex_source = render_template(
+        COVER_LETTER_TEMPLATE,
+        {
+            "identity": {
+                "name": profile.identity.name,
+                "email": profile.identity.email,
+                "phone": profile.identity.phone,
+                "location": profile.identity.location,
+            },
+            "company": job.company if job else "Unknown",
+            "date": date.today().strftime("%d %B %Y"),
+            "paragraphs": letter.paragraphs,
+        },
+    )
+    (run_dir / "cover_letter.tex").write_text(tex_source, encoding="utf-8")
+
+    result = compile_tex(tex_source, run_dir / "work", job_name="cover_letter")
+    if result.ok and result.pdf_path:
+        shutil.copyfile(result.pdf_path, run_dir / "cover_letter.pdf")
+        logger.info("finalize: cover letter written (%d words)", letter.word_count)
+    else:
+        (run_dir / "cover_letter.log").write_text(result.log, encoding="utf-8")
+        logger.error("finalize: cover letter did not compile; see cover_letter.log")

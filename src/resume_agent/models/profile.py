@@ -133,6 +133,22 @@ class Skill(_Strict):
     first_used: YearMonth | None = None
 
 
+class Narrative(_Strict):
+    """One markdown file from `narratives/`. Spec 3.2.
+
+    Prose, not schema. These are the raw material for cover letters -- the
+    *why* and *how* of working a certain way -- and imposing structure on
+    them would get in the way of writing them honestly.
+
+    They are still subject to the fabrication gate downstream: a narrative
+    that names a technology absent from skills.yaml produces letters that
+    fail verification. See profile.example/narratives/README.md.
+    """
+
+    name: str  # the filename stem, e.g. "how_i_learn"
+    content: str
+
+
 class Certification(_Strict):
     name: str
     issuer: str
@@ -152,6 +168,7 @@ class Profile(_Strict):
     projects: list[ProjectEntry] = Field(default_factory=list)
     skills: list[Skill] = Field(default_factory=list)
     certifications: list[Certification] = Field(default_factory=list)
+    narratives: list[Narrative] = Field(default_factory=list)
 
     # -- derived views ------------------------------------------------------
 
@@ -166,6 +183,9 @@ class Profile(_Strict):
             if bullet.id == bullet_id:
                 return bullet
         raise KeyError(f"no bullet with id {bullet_id!r}")
+
+    def narrative(self, name: str) -> Narrative | None:
+        return next((n for n in self.narratives if n.name == name), None)
 
     def skill_vocabulary(self) -> set[str]:
         """Every accepted way of naming a technology, lowercased.

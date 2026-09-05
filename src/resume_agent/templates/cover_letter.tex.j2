@@ -1,0 +1,72 @@
+%-------------------------
+% Cover letter. Spec 5, `write_cover_letter`: "Renders to its own LaTeX template."
+%
+% Deliberately plain. The resume earns its density from Jake's Resume's
+% aggressive geometry; a letter is read linearly and wants ordinary margins and
+% ordinary leading. Sharing the resume's template would make it look cramped for
+% no reason.
+%
+% Same Jinja delimiters as the resume (spec 6.1), and the same discipline: every
+% interpolated value goes through the `tex` filter, checked mechanically by
+% tests/test_env.py.
+%
+% \pdfgentounicode is guarded exactly as in the resume template -- see the long
+% note there. Tectonic's engine is XeTeX and has no such primitive; the property
+% it protects is asserted directly on the built PDF instead.
+%-------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[hidelinks]{hyperref}
+\usepackage[english]{babel}
+\usepackage{parskip}
+
+\ifdefined\pdfgentounicode
+  \input{glyphtounicode}
+  \pdfgentounicode=1
+\fi
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\raggedright
+
+\begin{document}
+
+%----------SENDER----------
+\textbf{\large \VAR{identity.name | tex}}
+
+\small
+\VAR{identity.location | tex} \\
+\href{mailto:\VAR{identity.email | tex}}{\VAR{identity.email | tex}} \\
+\VAR{identity.phone | tex}
+\normalsize
+
+\vspace{1.5em}
+
+\VAR{date | tex}
+
+\vspace{1em}
+
+%----------RECIPIENT----------
+Hiring Team \\
+\VAR{company | tex}
+
+\vspace{1.5em}
+
+Dear Hiring Team,
+
+\vspace{0.5em}
+
+%----------BODY----------
+\BLOCK{for paragraph in paragraphs}
+\VAR{paragraph | tex}
+
+\BLOCK{endfor}
+
+\vspace{1em}
+
+Sincerely, \\
+\VAR{identity.name | tex}
+
+\end{document}

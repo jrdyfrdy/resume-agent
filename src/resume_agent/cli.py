@@ -366,6 +366,9 @@ def run(
         bool,
         typer.Option("--no-judge", help="Skip the LLM grounding judge; free layers stay on."),
     ] = False,
+    no_cover_letter: Annotated[
+        bool, typer.Option("--no-cover-letter", help="Skip the cover letter subgraph.")
+    ] = False,
 ) -> None:
     """Run the whole graph: parse, retrieve, score, select, tailor, verify, compile.
 
@@ -383,7 +386,12 @@ def run(
         typer.secho(INSTALL_MESSAGE, fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_COMPILER)
 
-    options = RunOptions(out_dir=str(out), strict=strict, use_judge=not no_judge)
+    options = RunOptions(
+        out_dir=str(out),
+        strict=strict,
+        use_judge=not no_judge,
+        write_cover_letter=not no_cover_letter,
+    )
     graph = build_graph()
 
     try:
@@ -402,6 +410,15 @@ def run(
     typer.echo(f"  bullets on page : {len(final.get('tailored', []))}")
     typer.echo(f"  line budget     : {final.get('line_budget')}")
     typer.echo(f"  layout attempts : {final.get('layout_attempts', 0)}")
+
+    letter = final.get("cover_letter")
+    if letter is not None:
+        typer.echo(f"  cover letter    : {letter.word_count} words")
+    elif options.write_cover_letter:
+        typer.secho(
+            "  cover letter    : ABANDONED (failed verification; see run.json)",
+            fg=typer.colors.RED,
+        )
 
     # Dropped bullets are the one outcome worth interrupting for: the resume is
     # weaker than it could be, and the only alternative was shipping a claim the

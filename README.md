@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M5 complete.**
+**Status: M0-M6 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -32,8 +32,12 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   document is repaired from the compiler's own error message; a two-page
   resume shrinks its line budget and reselects until it fits.
 
-The cover letter (M6), HITL and the tracker (M7), and the eval harness (M8)
-are not built yet. **There is no web UI** — that is M9.
+* **M6** — the cover letter, as a LangGraph **subgraph** with its own retry
+  cycle: five paragraphs, ≤320 words counted in Python, every figure and
+  technology checked against the knowledge base, and a judge that reads the
+  résumé's actual bullets to catch a letter that contradicts them.
+
+HITL and the tracker (M7) and the eval harness (M8) are not built yet. **There is no web UI** — that is M9.
 
 ---
 
@@ -149,6 +153,10 @@ model ids and prompt hashes that produced it, and the profile's git SHA. It is
 what lets you ask, months from now, which bullets appear in applications that
 got callbacks.
 
+It also writes `cover_letter.pdf` — five paragraphs, at most 320 words,
+checked against the same knowledge base as the résumé and against the
+résumé's own bullets. `--no-cover-letter` skips it.
+
 `--no-judge` skips the paid grounding judge while keeping both free
 deterministic layers. `--strict` drops `confidence: claim` bullets.
 
@@ -200,12 +208,15 @@ graph TD;
 	fix_latex(fix_latex)
 	shrink_budget(shrink_budget)
 	note_overfull(note_overfull)
+	cover_letter(cover_letter)
 	finalize(finalize)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> parse_jd;
 	compile --> inspect;
+	cover_letter -.-> finalize;
 	fix_latex --> compile;
-	inspect -.-> finalize;
+	inspect -. &nbsp;layout_ok&nbsp; .-> cover_letter;
+	inspect -. &nbsp;skip_letter&nbsp; .-> finalize;
 	inspect -.-> fix_latex;
 	inspect -. &nbsp;retailor&nbsp; .-> note_overfull;
 	inspect -. &nbsp;reselect&nbsp; .-> shrink_budget;
@@ -231,6 +242,10 @@ graph TD;
   dropped with a loud log. Never ship an unverified claim.
 * **Layout cycle** (`inspect` → `fix_latex` / `shrink_budget` / `note_overfull`),
   3 retries, then finalize with the best artifact so far. Never spin.
+* **Cover letter cycle**, inside the `cover_letter` subgraph and invisible
+  here by design: draft → verify → draft, 2 retries, then **no letter**. The
+  résumé still ships. A letter is one artifact, so unlike a bullet there is
+  nothing to partially drop.
 
 ---
 
@@ -288,6 +303,10 @@ src/resume_agent/
   graph/build.py          every node, and EVERY edge (CLAUDE.md rule 6)
   graph/nodes/            one file per node; nodes import nothing from each other
   cache.py                model-output cache for the expensive nodes
+  graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
+  models/letter.py        CoverLetter; word_count is computed, not returned
+  templates/cover_letter.tex.j2  the letter's own template (spec §5)
+profile.example/narratives/  markdown source material for the letter
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
   latex/env.py            the Jinja environment with \VAR{} / \BLOCK{} delimiters
   latex/context.py        Profile -> template dict (dates, ordering, skill grouping)

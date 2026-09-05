@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 
 from resume_agent.models.fit import EvidenceMatch, FitReport
 from resume_agent.models.job import JobSpec
+from resume_agent.models.letter import CoverLetter
 from resume_agent.models.resume import TailoredBullet
 
 
@@ -44,6 +45,9 @@ class RunOptions(BaseModel):
     # bullets scored at all -- and the layout loop can only be exercised by a
     # profile with more content than one page holds.
     retrieval_k: int = 8
+    # M6. Off skips the whole subgraph -- useful when iterating on the resume
+    # half, since a letter costs a draft call plus a judge call per attempt.
+    write_cover_letter: bool = True
 
 
 class AgentState(TypedDict, total=False):
@@ -53,9 +57,10 @@ class AgentState(TypedDict, total=False):
     inputs exist, and requiring every key up front would mean seeding the state
     with a dozen `None`s that say nothing.
 
-    Deliberately absent: `company_brief` (the optional research node) and
-    `cover_letter` (M6's subgraph). A state field that no node writes is
-    scaffolding, and adding one later is a one-line change.
+    Deliberately absent: `company_brief`, which belongs to the optional
+    research node and is still unbuilt. A state field that no node writes is
+    scaffolding, and adding one later is a one-line change -- as `cover_letter`
+    was when M6 arrived.
     """
 
     # -- inputs --------------------------------------------------------------
@@ -73,6 +78,8 @@ class AgentState(TypedDict, total=False):
     fit_report: FitReport | None
     selected: list[str]  # bullet ids
     tailored: list[TailoredBullet]
+    cover_letter: CoverLetter | None
+    letter_verified: bool
 
     # -- artifacts -----------------------------------------------------------
     tex_source: str | None
@@ -86,8 +93,10 @@ class AgentState(TypedDict, total=False):
     line_budget: int
     grounding_attempts: int
     layout_attempts: int
+    letter_attempts: int
 
     # Genuinely append-only.
     dropped_bullets: Annotated[list[str], operator.add]
     critiques: Annotated[list[str], operator.add]
+    letter_critiques: Annotated[list[str], operator.add]
     errors: Annotated[list[str], operator.add]

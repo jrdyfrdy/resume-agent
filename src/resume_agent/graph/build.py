@@ -8,7 +8,10 @@
                 render -> compile -> inspect                  layout cycle, cap 3
                              ^          |                     then fail with the
                              +-- fix ---+                      best artifact so far
-                                        -> finalize
+                                        v
+                              cover_letter -> finalize        (a SUBGRAPH, spec 10;
+                                                               its own retry cycle,
+                                                               cap 2, invisible here)
 
 Nodes import nothing from each other; every routing decision is a function in
 this file. That is what makes the topology readable as one artifact and lets
@@ -36,6 +39,7 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph import END, START, StateGraph
 
 from resume_agent.analyze import budget_for_profile
+from resume_agent.graph.nodes.cover_letter import build_cover_letter_subgraph
 from resume_agent.graph.nodes.finalize import finalize
 from resume_agent.graph.nodes.fix_latex import fix_latex
 from resume_agent.graph.nodes.parse_jd import parse_job_description
@@ -231,7 +235,7 @@ def route_after_inspect(state: AgentState) -> str:
             "layout cycle hit its cap of %d attempts; finalizing the best artifact so far",
             MAX_LAYOUT_ATTEMPTS,
         )
-        return "finalize"
+        return _after_layout(state)
 
     if state.get("pdf_path") is None or first_latex_error(log):
         return "fix_latex"
@@ -242,6 +246,34 @@ def route_after_inspect(state: AgentState) -> str:
     if find_overfull_boxes(log):
         return "retailor"
 
+    return _after_layout(state)
+
+
+def _after_layout(state: AgentState) -> str:
+    """Where the run goes once the layout loop is done with it.
+
+    Both exits from the layout loop come through here -- the clean one and the
+    one that gave up at the cap -- so that `--no-cover-letter` cannot be honoured
+    on one path and silently ignored on the other. (It was, briefly: the cap
+    branch returned before the option was consulted.)
+
+    Spec 2 puts the letter after this loop rather than beside it because the
+    letter quotes the resume's verified bullets, and those are not settled until
+    the layout stops changing them.
+    """
+    if not state["options"].write_cover_letter:
+        return "skip_letter"
+    return "layout_ok"
+
+
+def route_after_cover_letter(state: AgentState) -> str:
+    """Always forward.
+
+    A conditional edge with one destination looks redundant, and is: it is
+    here so that skipping the letter (`--no-cover-letter`) and any future
+    branch after it are a change to this function rather than a change to
+    the graph's shape.
+    """
     return "finalize"
 
 
@@ -285,6 +317,8 @@ def build_graph(
     tailor_llm: BaseChatModel | None = None,
     judge_llm: BaseChatModel | None = None,
     fix_llm: BaseChatModel | None = None,
+    letter_llm: BaseChatModel | None = None,
+    letter_judge_llm: BaseChatModel | None = None,
 ):
     """Assemble and compile the graph.
 
@@ -306,6 +340,13 @@ def build_graph(
     builder.add_node("fix_latex", lambda state: node_fix_latex(state, llm=fix_llm))
     builder.add_node("shrink_budget", node_shrink_budget)
     builder.add_node("note_overfull", node_note_overfull)
+    # A compiled subgraph added as a single node (spec 10). Its draft/verify
+    # retry cycle is internal -- the parent calls one node and either gets a
+    # letter or does not.
+    builder.add_node(
+        "cover_letter",
+        build_cover_letter_subgraph(draft_llm=letter_llm, judge_llm=letter_judge_llm),
+    )
     builder.add_node("finalize", finalize)
 
     # --- the straight line ---------------------------------------------------
@@ -334,7 +375,11 @@ def build_graph(
             "fix_latex": "fix_latex",
             "reselect": "shrink_budget",
             "retailor": "note_overfull",
-            "finalize": "finalize",
+            # Spec 2 puts the cover letter after the layout loop settles: it
+            # quotes the resume's verified bullets, so it cannot be written
+            # until they have stopped changing.
+            "layout_ok": "cover_letter",
+            "skip_letter": "finalize",
         },
     )
     # A repaired document goes straight back to the compiler -- the compiler is
@@ -343,6 +388,11 @@ def build_graph(
     builder.add_edge("shrink_budget", "select")
     builder.add_edge("note_overfull", "tailor")
 
+    builder.add_conditional_edges(
+        "cover_letter",
+        route_after_cover_letter,
+        {"finalize": "finalize"},
+    )
     builder.add_edge("finalize", END)
 
     return builder.compile()
@@ -372,5 +422,8 @@ def initial_state(
         "candidates": [],
         "dropped_bullets": [],
         "critiques": [],
+        "letter_critiques": [],
+        "letter_attempts": 0,
+        "letter_verified": False,
         "errors": [],
     }
