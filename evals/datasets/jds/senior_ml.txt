@@ -1,0 +1,30 @@
+Senior Machine Learning Engineer
+Halcyon Vision - San Francisco
+
+Halcyon builds computer vision models for industrial inspection. We're hiring a
+senior ML engineer to own model training infrastructure and production
+inference.
+
+What you'll own
+- Training pipelines for our detection and segmentation models
+- Distributed training across multi-GPU clusters
+- Model evaluation, drift detection, and retraining triggers
+- Inference latency and cost at the edge
+- Mentoring two junior ML engineers
+
+Requirements
+- 5+ years in applied machine learning, with production ownership
+- Deep PyTorch experience; you have written custom training loops
+- Experience with distributed training (DDP, FSDP, or similar)
+- Strong grasp of CNN and transformer architectures for vision
+- Experience with model quantization and edge deployment
+- Familiarity with MLflow, Weights and Biases, or equivalent
+- Python
+
+Preferred
+- Publications at CVPR, ICCV or ECCV
+- CUDA kernel experience
+- ONNX Runtime or TensorRT optimization
+- Experience with active learning pipelines
+
+Compensation: $220,000 - $290,000 plus equity.

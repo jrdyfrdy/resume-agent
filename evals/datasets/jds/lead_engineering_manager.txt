@@ -1,0 +1,29 @@
+Engineering Manager, Payments
+Ostlere Group
+London (Hybrid, 3 days)
+
+We are seeking an Engineering Manager to lead our Payments engineering
+function, comprising two teams and eleven engineers.
+
+Responsibilities
+- Line management of two tech leads and, indirectly, nine engineers
+- Own delivery for the payments roadmap in partnership with Product
+- Run the hiring process for the function, including headcount planning
+- Conduct performance reviews and manage career development
+- Represent Payments engineering to the executive team
+- Own the operational budget for the function
+
+Requirements
+- 3+ years of direct line management of software engineers
+- Demonstrated experience managing managers
+- Track record of delivering a multi-team roadmap
+- Experience hiring at volume, including structured interview design
+- Strong stakeholder management at executive level
+- Background in payments, banking or a regulated financial domain
+- Prior hands-on engineering background
+
+Preferred
+- Experience managing a distributed team across timezones
+- Familiarity with UK payment schemes (Faster Payments, Bacs)
+
+This is a people leadership role. Hands-on coding is not expected.

@@ -1,0 +1,27 @@
+Junior Frontend Engineer
+Puddle - Remote (EU timezones)
+
+Hey! We're a small team building a design collaboration tool that people
+actually seem to like, and we need another pair of hands on the frontend.
+
+What you'd do
+- Build features in React and TypeScript
+- Work directly with our designer
+- Fix the bugs you find, not just the ones in the tracker
+- Help us figure out our component library situation, which is a mess
+
+What we're hoping for
+- 1-3 years writing React professionally
+- Solid TypeScript
+- You care what things look like at 320px wide
+- Comfortable in a codebase you didn't write
+
+Nice to have
+- Any backend experience at all
+- Opinions about CSS you can defend
+
+We're seven people. There's no ladder to climb yet, which is either exciting or
+alarming depending on where you are in your career. Salary is transparent and
+posted below. We don't do take-homes longer than two hours.
+
+Salary: EUR 55,000 - 70,000

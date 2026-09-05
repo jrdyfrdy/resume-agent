@@ -1,0 +1,30 @@
+Embedded Software Engineer
+Fenwick Instruments
+Rochester, NY (On site)
+
+Fenwick builds precision measurement instruments for semiconductor fabrication.
+The Embedded Software group writes the firmware that runs them.
+
+Responsibilities
+- Develop and maintain firmware in C and C++ for ARM Cortex-M targets
+- Write and debug device drivers for SPI, I2C and CAN peripherals
+- Work alongside hardware engineers during board bring-up
+- Optimize for deterministic timing under hard real-time constraints
+- Support manufacturing test and field diagnostics
+
+Required
+- 3-6 years of embedded software development
+- Strong C; working C++ for embedded targets
+- Experience with an RTOS (FreeRTOS, Zephyr, or similar)
+- Comfortable with an oscilloscope and a logic analyzer
+- Understanding of memory-constrained development
+- Experience with hardware bring-up
+
+Preferred
+- Semiconductor equipment domain experience
+- Experience with IEC 61508 or similar functional safety standards
+- Board design familiarity
+- Python for test automation
+
+This role is on site. The instruments are here and you cannot debug them
+remotely.

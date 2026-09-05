@@ -1,0 +1,28 @@
+Data Platform Engineer
+Thornhill Logistics - Chicago or Remote
+
+We move freight data. A lot of it, from carriers whose APIs range from
+reasonable to a fax machine with extra steps. The Data Platform team owns
+everything between those systems and the analytics our customers actually use.
+
+What you'll do
+- Build and operate ingestion pipelines in Python
+- Own the transformation layer and the models underneath it
+- Keep query latency sane as volume grows
+- Improve how we detect bad data before customers do
+- Share the on-call rotation for the pipelines you own
+
+What we're looking for
+- 3-5 years building data-intensive systems
+- Strong Python and strong SQL
+- Experience with PostgreSQL at scale, including query optimization
+- Comfort with columnar formats and analytical query engines
+- Infrastructure as code experience; we use Terraform
+- Experience with Kafka or a similar streaming platform
+
+Nice to have
+- DuckDB, ClickHouse or similar
+- AWS cost work
+- Logistics or supply chain domain knowledge
+
+Compensation: $150,000 - $180,000 plus equity.

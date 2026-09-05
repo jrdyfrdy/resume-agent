@@ -1,0 +1,31 @@
+DevOps Engineer
+Aldergrove Health Networks
+Hybrid, Toronto (2 days on site)
+
+Aldergrove operates clinical scheduling software for community health networks
+across Canada. The Platform Operations team keeps it running.
+
+Responsibilities
+- Own and extend our Kubernetes deployments
+- Maintain infrastructure as code across three cloud accounts
+- Improve CI/CD pipeline reliability and speed
+- Participate in a 1-in-5 on-call rotation
+- Lead incident response and write the postmortems
+- Reduce cloud spend without reducing headroom
+
+Required
+- 3-6 years in a DevOps, SRE or platform role
+- Production Kubernetes experience, not just tutorials
+- Terraform or equivalent
+- Strong scripting in Python, Go or Bash
+- Docker
+- Demonstrated on-call experience in a production environment
+
+Preferred
+- AWS certification
+- Experience with PHIPA or HIPAA compliance requirements
+- Prometheus and Grafana
+- Experience migrating from EC2 to a container platform
+
+We take the on-call rotation seriously and staff it properly.
+Compensation: CAD 115,000 - 145,000.

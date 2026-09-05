@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run review applications graph snapshots calibrate calibrate-budget golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run review applications graph eval eval-worsened eval-free snapshots calibrate calibrate-budget golden clean
 
 setup:
 	uv sync
@@ -46,6 +46,20 @@ review:
 
 applications:
 	uv run resume-agent applications
+
+# The eval set. Spec 9. A full 15-JD run is roughly $10-15 the first time
+# and near-free afterwards (M5 caches on posting + prompt hash).
+eval:
+	uv run python evals/run_eval.py
+
+# The deliberately worsened tailoring prompt. Its mean judge score must be
+# measurably lower, or the harness is not measuring anything.
+eval-worsened:
+	uv run python evals/run_eval.py --variant worsened
+
+# Deterministic checks only: no judge calls, no cost.
+eval-free:
+	uv run python evals/run_eval.py --no-judge
 
 # Regenerate the graph diagram in the README from the compiled graph.
 graph:

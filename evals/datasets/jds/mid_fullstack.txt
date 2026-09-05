@@ -1,0 +1,27 @@
+Full Stack Engineer
+Kestrel Bay - Remote (US)
+
+We're building the tool that finally kills the spreadsheet your ops team is
+holding together with duct tape. Seed funded, twelve people, growing.
+
+You'll be
+- Shipping features end to end, frontend through database
+- Talking to customers directly, because we all do
+- Making product calls, because there isn't a PM yet
+- Owning what you ship, including when it breaks at 2am
+
+We want
+- 3+ years shipping full stack work
+- React and TypeScript on the front
+- Python or Node.js on the back
+- PostgreSQL and the judgement to know when a query is about to be a problem
+- Comfort with ambiguity, which is a polite way of saying we change direction
+
+Bonus
+- Startup experience
+- Design sense
+- You've been on call before and have opinions about it
+
+This is an early-stage company. The hours are what the hours need to be when
+we're close to something, and we try to make up for it in between. If you want
+predictable, this isn't that.

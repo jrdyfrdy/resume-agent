@@ -1,0 +1,26 @@
+Staff Engineer, Infrastructure
+Brightwater Systems - Remote
+
+We're looking for a staff engineer to set the technical direction for our
+infrastructure over the next two years. This is a scope role, not a management
+one - you'd own architecture, not headcount.
+
+The problems
+- Our deploy story works but doesn't scale to the team we're becoming
+- Cloud spend is growing faster than usage and nobody owns the number
+- We have three ways of doing service-to-service auth and should have one
+- Reliability is good but the on-call load isn't sustainable
+
+What you'd bring
+- 8+ years, with several spent on platform or infrastructure
+- Kubernetes at production scale
+- Infrastructure as code, ideally Terraform
+- Strong opinions about deployment and rollback, held loosely
+- Cost as a first-class engineering concern
+- Track record of technical leadership without formal authority
+- Experience designing for reliability with real error budgets
+
+We publish our architecture decisions. We expect design docs before substantial
+work. Code review is a conversation.
+
+Compensation: $230,000 - $280,000 plus equity.

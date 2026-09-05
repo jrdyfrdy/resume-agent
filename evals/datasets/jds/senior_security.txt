@@ -1,0 +1,27 @@
+Senior Application Security Engineer
+Marchmont Trust
+
+Marchmont Trust is a private bank. The Application Security team is responsible
+for ensuring that everything we ship is defensible.
+
+The role
+- Lead threat modelling for new services
+- Own our SAST and DAST tooling and triage its output
+- Conduct code-level security reviews
+- Run and remediate findings from external penetration tests
+- Maintain our secure development lifecycle documentation
+- Advise engineering teams on cryptographic design
+
+Required
+- 6+ years in application security
+- Demonstrated experience with threat modelling methodologies (STRIDE or similar)
+- Deep understanding of the OWASP Top 10 in practice, not as a checklist
+- Experience with static and dynamic analysis tooling
+- Familiarity with cryptographic primitives and their misuse
+- Experience in a regulated financial environment
+
+Preferred
+- OSCP, CISSP or GIAC certification
+- Experience with HSM key management
+- Bug bounty triage experience
+- Familiarity with PCI DSS

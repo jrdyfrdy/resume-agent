@@ -1,0 +1,26 @@
+Data Engineering Intern (Summer)
+Weatherfield Institute for Climate Modelling
+
+The Institute invites applications for a summer internship within the Data
+Systems group. The successful candidate will assist in the maintenance and
+extension of the ingestion pipelines that feed our regional climate models.
+
+Responsibilities
+- Assist in the development of Python-based ingestion routines
+- Support the migration of legacy datasets into our columnar store
+- Contribute to the documentation of data provenance
+- Present findings at the end-of-programme colloquium
+
+Required qualifications
+- Currently enrolled in an undergraduate or master's programme in Computer
+  Science, Atmospheric Science, or a related discipline
+- Familiarity with Python
+- Introductory coursework in databases
+
+Preferred qualifications
+- Exposure to Parquet or similar columnar formats
+- Familiarity with scientific computing libraries
+- Prior publication or conference presentation experience
+
+The internship runs for twelve weeks and carries a stipend. Applicants should
+submit a curriculum vitae and a brief statement of research interest.

@@ -45,6 +45,12 @@ PARSE_EFFORT = "medium"
 
 API_KEY_ENV_VAR = "ANTHROPIC_API_KEY"
 
+# Lets one prompt be swapped for another without touching the file on disk.
+# Format: "name=path,name=path". Used by the eval harness to run a variant
+# (M8 needs to prove a deliberately worsened prompt scores measurably worse),
+# and by nothing else -- ordinary runs read prompts/ unchanged.
+PROMPT_OVERRIDE_ENV_VAR = "RESUME_AGENT_PROMPT_OVERRIDES"
+
 
 class MissingCredentialsError(RuntimeError):
     """No API key is configured."""
@@ -99,16 +105,42 @@ def build_chat_model(
     )
 
 
+def prompt_overrides() -> dict[str, Path]:
+    """Parse the override map from the environment. Empty in normal runs."""
+    raw = os.environ.get(PROMPT_OVERRIDE_ENV_VAR, "")
+    overrides: dict[str, Path] = {}
+    for pair in raw.split(","):
+        name, _, path = pair.partition("=")
+        if name.strip() and path.strip():
+            overrides[name.strip()] = Path(path.strip())
+    return overrides
+
+
+def prompt_path(name: str) -> Path:
+    """Where `name` is read from, honouring any override."""
+    return prompt_overrides().get(name, PROMPT_DIR / f"{name}.md")
+
+
 @cache
+def _read_prompt(path: str) -> str:
+    """Cached on the resolved path, not on the prompt name.
+
+    Caching on the name would make an override invisible for the rest of the
+    process -- the first read would win and the variant would silently score
+    identically to the baseline, which is the one result an eval must never
+    produce by accident.
+    """
+    file = Path(path)
+    if not file.is_file():
+        raise FileNotFoundError(f"no prompt at {file}")
+    return file.read_text(encoding="utf-8")
+
+
 def load_prompt(name: str) -> str:
-    """Read `prompts/<name>.md`."""
-    path = PROMPT_DIR / f"{name}.md"
-    if not path.is_file():
-        raise FileNotFoundError(f"no prompt named {name!r} at {path}")
-    return path.read_text(encoding="utf-8")
+    """Read `prompts/<name>.md`, or its override."""
+    return _read_prompt(str(prompt_path(name)))
 
 
-@cache
 def prompt_version(name: str) -> str:
     """A short hash of a prompt's current text.
 

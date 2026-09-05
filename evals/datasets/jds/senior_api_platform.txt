@@ -1,0 +1,30 @@
+Senior Engineer, API Platform
+Ravensworth Data Group
+Remote (US) or Boston
+
+We provide the API that our customers' engineering teams build against. It has
+to be fast, it has to be correct, and it has to stop being a surprise.
+
+What you'll work on
+- API design and the contract discipline that keeps it stable
+- Latency and throughput on our highest-traffic endpoints
+- The caching layer, which currently does less than it should
+- Query performance against our primary Postgres cluster
+- Observability, so we find problems before customers report them
+- Setting technical direction with two other senior engineers
+
+What we're looking for
+- 6+ years building production backend services
+- Strong Python; FastAPI or similar
+- Deep PostgreSQL experience including query optimization
+- Real caching experience - Redis or equivalent, in production
+- REST API design judgement
+- Observability tooling: OpenTelemetry, Grafana, or similar
+- Experience owning services on call
+
+Nice to have
+- Kafka or another streaming platform
+- Terraform
+- Experience reducing infrastructure cost as an engineering problem
+
+Compensation: $185,000 - $230,000.

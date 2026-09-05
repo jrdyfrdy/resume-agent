@@ -1,0 +1,28 @@
+Backend Engineer
+Pellow & Vance - Remote (UK)
+
+We build case management software for law firms. It's not glamorous and it
+works, which our customers care about more than we sometimes remember.
+
+What you'll do
+- Build and maintain backend services in Python
+- Design and evolve the data model, which has grown organically
+- Improve query performance; some of our reports have got slow
+- Work on the integration layer that talks to third-party legal systems
+- Take part in a light on-call rotation
+
+Requirements
+- 3-5 years of backend engineering
+- Strong Python
+- Solid relational database experience; we run PostgreSQL
+- Experience designing REST APIs
+- Comfort with a codebase that has history
+
+Nice to have
+- FastAPI or Django
+- Experience with caching layers
+- Docker and CI/CD familiarity
+- Legal tech or another regulated domain
+
+We are a fifteen-person company that has been profitable for six years. We are
+not trying to be a rocket ship. Compensation: GBP 60,000 - 75,000.

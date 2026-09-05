@@ -1,0 +1,29 @@
+Quality Assurance Engineer I
+Calloway Financial Systems
+Location: Charlotte, NC (On site)
+
+Position Summary
+The Quality Assurance Engineer I is responsible for the design, execution and
+maintenance of manual and automated test cases for our retail banking platform.
+
+Essential Duties
+- Author and execute detailed manual test plans against written requirements
+- Maintain the regression suite in our test management system
+- Log, triage and track defects through resolution
+- Participate in release readiness reviews
+- Perform user acceptance testing coordination with business stakeholders
+
+Required Qualifications
+- Bachelor's degree
+- 1-2 years of software quality assurance experience
+- Demonstrated experience authoring manual test cases
+- Familiarity with a test management system (qTest, Zephyr, or similar)
+- Working knowledge of SQL for data validation
+- Experience testing in a regulated financial environment
+
+Preferred Qualifications
+- ISTQB Foundation certification
+- Exposure to Selenium or Cypress
+- Understanding of ACH and card network settlement flows
+
+Calloway Financial Systems is an equal opportunity employer.

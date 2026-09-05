@@ -1,6 +1,10 @@
 # Build output
 out/
 
+# Eval run output. `evals/baselines/` and `evals/variants/` ARE committed --
+# a baseline you cannot diff against is not a baseline.
+evals/results/
+
 # YOUR real career data -- never committed. profile.example/ is the public
 # stand-in that tests and development use (CLAUDE.md).
 profile/

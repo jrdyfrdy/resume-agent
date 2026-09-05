@@ -1,7 +1,17 @@
 # Job description dataset
 
-Three postings at junior / mid / senior level, used by M2's snapshot tests and
-(from M8) by the eval harness.
+16 postings, used by M2's snapshot tests and by M8's eval harness.
+
+The three original files (`junior`, `mid`, `senior`) were written to exercise
+specific parser behaviours and are documented below. The other 13 exist to
+give the eval set a spread: intern through staff, domains outside backend,
+four different tones, and -- deliberately -- **several postings the example
+profile should score badly on**.
+
+That last part matters. An eval set where every resume scores 0.8 cannot
+detect a regression, so `senior_ml`, `senior_security`,
+`lead_engineering_manager` and `mid_embedded` are all outside the profile's
+experience on purpose.
 
 ## ⚠️ These three are SYNTHETIC
 

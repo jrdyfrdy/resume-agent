@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M7 complete.**
+**Status: M0-M8 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -41,7 +41,11 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   tracker: `--interactive` pauses at a review gate, the paused run survives
   the process that started it, and every finished run writes a tracker row.
 
-The eval harness (M8) is not built yet. **There is no web UI** — that is M9.
+* **M8** — the eval harness: 16 job descriptions, six free deterministic
+  checks, a five-dimension LLM judge, and a regression gate that fails a
+  build when the mean judge score drops more than 0.3.
+
+Only the API/UI (M9) remains. **There is no web UI** — that is M9.
 
 ---
 
@@ -195,6 +199,42 @@ uv run resume-agent applications --by-bullet
 `--by-bullet` answers the question spec §11 poses — *which bullets appear in
 applications that got callbacks?* — and it is worth exactly as much as the
 outcomes you bother to record.
+
+### Evaluating a change
+
+```bash
+make eval                    # the full set: table + results JSON
+make eval-free               # deterministic checks only, no judge calls
+make eval-worsened           # the deliberately sabotaged tailoring prompt
+```
+
+```
+jd                            det  rel spec  ats tone filler   mean
+-------------------------------------------------------------------
+senior_api_platform            ok    5    5    5    4      5   4.80
+mid_data_platform              ok    4    5    4    4      4   4.20
+junior_frontend                ok    3    3    3    4      4   3.40
+senior_ml                      ok    2    2    2    3      3   2.40
+-------------------------------------------------------------------
+mean                               3.5  3.8  3.5  3.8    4.0   3.70
+```
+
+The point is not the table, it's the gate:
+
+```bash
+uv run python evals/run_eval.py --check-against evals/baselines/main.json
+```
+
+Exits non-zero when the mean judge score drops by more than 0.3, so a prompt
+change that makes things worse fails a build instead of being argued about.
+`evals/variants/tailor_bullets.worsened.md` is a deliberately bad prompt that
+exists to prove the gate fires — a harness that can't detect *that* isn't
+measuring anything.
+
+**Cost:** a full run generates 16 resumes, so roughly $10–15 the first time and
+near-free afterwards (parses, scores and first-pass rewrites are all cached on
+the posting and the prompt hash). `--limit N` and `--no-judge` are there for
+when you don't want to pay for the whole set.
 
 ### Searching the knowledge base
 
@@ -351,6 +391,7 @@ src/resume_agent/
   graph/checkpoint.py     SqliteSaver, stable thread ids, type allowlist
   graph/nodes/review.py   the interrupt() gate and the revision cap
   tracker/                the application table; outcomes you fill in by hand
+evals/                    the eval set, its checks, the judge, the gate
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned
   templates/cover_letter.tex.j2  the letter's own template (spec §5)
