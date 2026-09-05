@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M8 complete.**
+**Status: M0-M9 complete — every milestone in the spec.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -45,9 +45,26 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   checks, a five-dimension LLM judge, and a regression gate that fails a
   build when the mean judge score drops more than 0.3.
 
-Only the API/UI (M9) remains. **There is no web UI** — that is M9.
+* **M9** — a FastAPI app with SSE streaming of node events, and a one-file
+  frontend: paste a posting, watch the graph tick past node by node, read
+  the fit report and the PDF without leaving the page. **There is no web UI** — that is M9.
 
 ---
+
+## The web UI
+
+```bash
+uv run resume-agent serve
+```
+
+Then open <http://127.0.0.1:8000>. Paste a posting, hit Run, and watch the graph
+work — `parse_jd → retrieve → score → select → tailor → verify → render →
+compile → inspect` streams in live over SSE, with model calls shown so a
+twenty-second tailoring call doesn't look like a hang.
+
+The page reports missing credentials or a missing LaTeX compiler **before** you
+press Run rather than after you've waited. It binds to localhost by default: the
+API has no authentication and starting a run spends money.
 
 ## Setup
 
@@ -391,6 +408,7 @@ src/resume_agent/
   graph/checkpoint.py     SqliteSaver, stable thread ids, type allowlist
   graph/nodes/review.py   the interrupt() gate and the revision cap
   tracker/                the application table; outcomes you fill in by hand
+  api/                    FastAPI app, SSE, and a single static page
 evals/                    the eval set, its checks, the judge, the gate
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned

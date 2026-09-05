@@ -9,6 +9,7 @@
     resume-agent run      --jd ... --interactive                (M7)
     resume-agent resume-run --jd ...                            (M7)
     resume-agent applications                                   (M7)
+    resume-agent serve                                          (M9)
 """
 
 from __future__ import annotations
@@ -627,6 +628,39 @@ def applications(
             f"{row.outcome or '-'}"
         )
     typer.echo()
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Interface to bind.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port to listen on.")] = 8000,
+    reload: Annotated[bool, typer.Option("--reload", help="Reload on code changes.")] = False,
+) -> None:
+    """Serve the web UI. Spec 8's M9.
+
+    Binds to localhost by default. The API has no authentication and the run
+    registry is an in-process dict, so this is a single-user tool on your own
+    machine -- binding it to 0.0.0.0 would expose an unauthenticated endpoint
+    that spends money.
+    """
+    import uvicorn
+
+    typer.secho(f"resume-agent UI: http://{host}:{port}", fg=typer.colors.CYAN, bold=True)
+    if not has_credentials():
+        typer.secho(
+            "  (no ANTHROPIC_API_KEY -- the page will load and the Run button "
+            "will be disabled)",
+            fg=typer.colors.YELLOW,
+        )
+
+    uvicorn.run(
+        "resume_agent.api.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        reload=reload,
+        log_level="info",
+    )
 
 if __name__ == "__main__":
     app()

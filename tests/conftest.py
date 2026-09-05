@@ -20,6 +20,7 @@ from resume_agent.latex.compile import CompileResult, compile_tex, find_compiler
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
 from resume_agent.models.profile import Profile
+from resume_agent.tracker.db import TRACKER_DB_ENV_VAR
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILE_EXAMPLE = REPO_ROOT / "profile.example"
@@ -99,3 +100,10 @@ def isolated_model_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch) 
     which is the worst kind of green.
     """
     monkeypatch.setenv(CACHE_DIR_ENV_VAR, str(tmp_path_factory.mktemp("model_cache")))
+
+    # Same reasoning, higher stakes: `finalize` writes a tracker row, so any
+    # test that runs the graph end to end would otherwise put a fake
+    # application into the user's real, non-regenerable tracker.
+    monkeypatch.setenv(
+        TRACKER_DB_ENV_VAR, str(tmp_path_factory.mktemp("tracker") / "applications.db")
+    )

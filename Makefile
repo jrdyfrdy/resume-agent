@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run review applications graph eval eval-worsened eval-free snapshots calibrate calibrate-budget golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run serve review applications graph eval eval-worsened eval-free snapshots calibrate calibrate-budget golden clean
 
 setup:
 	uv sync
@@ -46,6 +46,9 @@ review:
 
 applications:
 	uv run resume-agent applications
+
+serve:
+	uv run resume-agent serve
 
 # The eval set. Spec 9. A full 15-JD run is roughly $10-15 the first time
 # and near-free afterwards (M5 caches on posting + prompt hash).

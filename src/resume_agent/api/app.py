@@ -1,0 +1,258 @@
+"""FastAPI app with SSE streaming of node events. Spec 8's M9.
+
+    "FastAPI + SSE streaming of node events; minimal frontend."
+
+**Why `astream_events` and not `astream(stream_mode="updates")`.** Updates-mode
+is simpler and gives exactly one delta per node. But spec 10 maps
+"Streaming (`astream_events`)" to this milestone, and the events carry more than
+node boundaries: `on_chat_model_start` is what lets the page say "calling the
+model" during the twenty seconds when tailoring is otherwise a frozen spinner.
+The stream is filtered down to node boundaries plus model calls rather than
+firehosing every internal runnable.
+
+**Why runs execute in a background task.** Letting the SSE connection drive the
+graph directly is fewer lines, and means closing the tab kills a run you are
+paying for. A run is started once and appends to its own event log; the SSE
+endpoint reads that log by index, so a refresh replays and reconnects instead
+of restarting.
+
+**The run registry is an in-process dict.** This is a localhost, single-user
+tool; anything else would be inventing a deployment story the spec does not ask
+for. It is the first thing to replace if this ever runs anywhere real.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+import uuid
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+
+from resume_agent.api.models import (
+    ApplicationSummary,
+    NodeEvent,
+    ProfileSummary,
+    RunCreated,
+    RunRequest,
+    RunSummary,
+    summarise_state,
+)
+from resume_agent.graph.build import build_graph, initial_state
+from resume_agent.graph.state import RunOptions
+from resume_agent.kb.loader import ProfileLoadError, load_profile
+from resume_agent.latex.compile import find_compiler
+from resume_agent.llm import has_credentials
+from resume_agent.tracker.db import list_applications
+
+logger = logging.getLogger(__name__)
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# The graph's own node names. Everything else in the event stream is an internal
+# runnable the page has no use for.
+GRAPH_NODES = {
+    "parse_jd", "retrieve", "score", "select", "tailor", "verify", "render",
+    "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull",
+    "cover_letter", "human_review", "revision_cap", "finalize",
+}  # fmt: skip
+
+# How often the SSE endpoint checks for new events. Node transitions take
+# seconds, so a tenth of a second of latency is invisible.
+POLL_INTERVAL_S = 0.1
+
+
+@dataclass
+class Run:
+    """One in-flight or finished run."""
+
+    run_id: str
+    status: str = "queued"
+    summary: RunSummary | None = None
+    pdf_path: Path | None = None
+    task: asyncio.Task | None = None
+    # The append-only event log. The SSE endpoint reads it by index rather than
+    # consuming a queue, which is what makes a browser refresh reconnect to a
+    # run in progress and replay what it missed -- a queue would have been
+    # drained by the connection that dropped.
+    history: list[NodeEvent] = field(default_factory=list)
+
+
+def create_app(graph_factory=build_graph) -> FastAPI:
+    """Build the app.
+
+    `graph_factory` is injectable so the tests can drive every endpoint with a
+    fake graph -- no API key, no network, no compiler.
+    """
+    app = FastAPI(title="resume-agent", docs_url="/api/docs")
+    runs: dict[str, Run] = {}
+
+    # -- read-only ---------------------------------------------------------
+
+    @app.get("/", response_class=HTMLResponse)
+    async def index() -> str:
+        return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/api/profile", response_model=ProfileSummary)
+    async def profile_summary(profile: str = "profile.example") -> ProfileSummary:
+        try:
+            loaded = load_profile(Path(profile))
+        except ProfileLoadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        return ProfileSummary(
+            name=loaded.identity.name,
+            experience=len(loaded.experience),
+            projects=len(loaded.projects),
+            bullets=len(loaded.all_bullets()),
+            skills=len(loaded.skills),
+            # Surfaced so the page can say what will fail before you click Run,
+            # rather than after you have waited for it.
+            has_credentials=has_credentials(),
+            has_compiler=find_compiler() is not None,
+        )
+
+    @app.get("/api/applications", response_model=list[ApplicationSummary])
+    async def applications(limit: int = 20) -> list[ApplicationSummary]:
+        return [
+            ApplicationSummary(
+                id=row.id,
+                applied_on=row.applied_on,
+                company=row.company,
+                title=row.title,
+                overall_fit=row.overall_fit,
+                outcome=row.outcome,
+            )
+            for row in list_applications(limit=limit)
+        ]
+
+    # -- running -----------------------------------------------------------
+
+    @app.post("/api/runs", response_model=RunCreated, status_code=202)
+    async def start_run(request: RunRequest) -> RunCreated:
+        run = Run(run_id=uuid.uuid4().hex[:12])
+        runs[run.run_id] = run
+        run.task = asyncio.create_task(_execute(run, request, graph_factory))
+        return RunCreated(run_id=run.run_id)
+
+    @app.get("/api/runs/{run_id}", response_model=RunSummary)
+    async def get_run(run_id: str) -> RunSummary:
+        run = runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="no such run")
+        if run.summary is not None:
+            return run.summary
+        return RunSummary(run_id=run_id, status=run.status)
+
+    @app.get("/api/runs/{run_id}/events")
+    async def stream_events(run_id: str) -> StreamingResponse:
+        run = runs.get(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="no such run")
+        return StreamingResponse(
+            _sse(run),
+            media_type="text/event-stream",
+            # Without these a proxy or the browser will happily buffer the whole
+            # stream and deliver it at the end, which looks exactly like the
+            # feature not working.
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/api/runs/{run_id}/pdf")
+    async def get_pdf(run_id: str) -> FileResponse:
+        run = runs.get(run_id)
+        if run is None or run.pdf_path is None or not run.pdf_path.is_file():
+            raise HTTPException(status_code=404, detail="no PDF for this run")
+        return FileResponse(run.pdf_path, media_type="application/pdf", filename="resume.pdf")
+
+    return app
+
+
+# ---------------------------------------------------------------------------
+# The run itself
+# ---------------------------------------------------------------------------
+
+
+async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
+    """Drive the graph, appending filtered events to the run's log."""
+    started = time.monotonic()
+
+    def emit(event: NodeEvent) -> None:
+        run.history.append(event)
+
+    try:
+        run.status = "running"
+        options = RunOptions(
+            out_dir=str(Path("out") / "api" / run.run_id),
+            strict=request.strict,
+            use_judge=request.use_judge,
+            write_cover_letter=request.write_cover_letter,
+        )
+        graph = graph_factory()
+        state_in = initial_state(request.jd, request.profile, options)
+
+        final: dict[str, Any] = {}
+        async for event in graph.astream_events(
+            state_in, {"recursion_limit": 120}, version="v2"
+        ):
+            kind, name = event["event"], event.get("name", "")
+            elapsed = round(time.monotonic() - started, 1)
+
+            if name in GRAPH_NODES and kind == "on_chain_start":
+                emit(NodeEvent(kind="node_start", name=name, elapsed_s=elapsed))
+            elif name in GRAPH_NODES and kind == "on_chain_end":
+                emit(NodeEvent(kind="node_end", name=name, elapsed_s=elapsed))
+                output = (event.get("data") or {}).get("output")
+                if isinstance(output, dict):
+                    final.update(output)
+            elif kind == "on_chat_model_start":
+                # The reason for using astream_events at all: without this the
+                # page is a frozen spinner for the twenty seconds a tailoring
+                # call takes.
+                emit(NodeEvent(kind="model_start", name="model", detail=name, elapsed_s=elapsed))
+            elif kind == "on_chat_model_end":
+                emit(NodeEvent(kind="model_end", name="model", detail=name, elapsed_s=elapsed))
+
+        # `astream_events` yields deltas; the authoritative final state is
+        # whatever the graph settled on, so read it back rather than trusting
+        # the accumulation above.
+        run.summary = summarise_state(run.run_id, "done", final)
+        pdf = final.get("pdf_path")
+        run.pdf_path = Path(pdf) if pdf else None
+        run.status = "done"
+        emit(NodeEvent(kind="status", name="done", elapsed_s=round(time.monotonic() - started, 1)))
+
+    except Exception as exc:  # noqa: BLE001 - the page must be told, not left hanging
+        logger.exception("run %s failed", run.run_id)
+        run.status = "failed"
+        run.summary = RunSummary(run_id=run.run_id, status="failed", errors=[str(exc)])
+        emit(NodeEvent(kind="error", name="failed", detail=str(exc)))
+
+
+async def _sse(run: Run) -> AsyncIterator[str]:
+    """Serialise a run's events as Server-Sent Events.
+
+    SSE is a text format -- `data: <json>` followed by a blank line -- so it
+    needs no library.
+
+    Reads the history by index rather than consuming a queue. That is what makes
+    a refresh mid-run replay everything and then continue, instead of showing an
+    empty log because the previous connection drained the events.
+    """
+    sent = 0
+    while True:
+        while sent < len(run.history):
+            yield f"data: {run.history[sent].model_dump_json()}\n\n"
+            sent += 1
+
+        if run.status in ("done", "failed"):
+            yield "event: end\ndata: {}\n\n"
+            return
+
+        await asyncio.sleep(POLL_INTERVAL_S)

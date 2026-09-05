@@ -36,5 +36,8 @@ out/**/*.fls
 out/**/*.fdb_latexmk
 out/**/*.synctex.gz
 
+# Local dev-server config for the Claude Code browser pane.
+.claude/
+
 # Env
 .env

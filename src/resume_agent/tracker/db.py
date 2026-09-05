@@ -14,12 +14,28 @@ deletes it.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from pathlib import Path
 
 from resume_agent.tracker.models import ApplicationRow
 
 TRACKER_DB = Path("out") / "applications.db"
+TRACKER_DB_ENV_VAR = "RESUME_AGENT_TRACKER_DB"
+
+
+def default_tracker_db() -> Path:
+    """Where the tracker lives.
+
+    Resolved on every call rather than bound as a default argument, so the
+    test suite can point it somewhere disposable. Without that, any test that
+    runs the graph to completion writes a real row into the real tracker --
+    which happened, and left twenty fake applications in it. The tracker is
+    the one database in this project that is NOT derived and cannot be
+    regenerated, so polluting it is worse than polluting a cache.
+    """
+    override = os.environ.get(TRACKER_DB_ENV_VAR)
+    return Path(override) if override else TRACKER_DB
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS applications (
@@ -44,7 +60,7 @@ CREATE INDEX IF NOT EXISTS applications_outcome ON applications (outcome);
 
 
 def _connect(db_path: Path | None = None) -> sqlite3.Connection:
-    path = Path(db_path) if db_path else TRACKER_DB
+    path = Path(db_path) if db_path else default_tracker_db()
     path.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(path)
     connection.row_factory = sqlite3.Row
