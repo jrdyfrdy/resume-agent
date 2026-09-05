@@ -5,6 +5,7 @@
     resume-agent search "kubernetes" --explain                 (M1)
     resume-agent parse-jd --jd evals/datasets/jds/mid.txt       (M2)
     resume-agent analyze  --jd evals/datasets/jds/mid.txt       (M3)
+    resume-agent run      --jd evals/datasets/jds/mid.txt       (M5)
 """
 
 from __future__ import annotations
@@ -16,7 +17,9 @@ from typing import Annotated
 import typer
 
 from resume_agent.analyze import analyze as run_analysis
+from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.nodes.parse_jd import JobDescriptionParseError, parse_job_description
+from resume_agent.graph.state import RunOptions
 from resume_agent.kb.index import ProfileIndex, index_path_for
 from resume_agent.kb.loader import ProfileLoadError, load_profile
 from resume_agent.kb.retriever import HybridRetriever, SearchMode
@@ -345,6 +348,78 @@ def analyze(
 
     render_fit_report(result)
 
+
+
+@app.command()
+def run(
+    jd: Annotated[Path, typer.Option("--jd", help="File containing the job posting.")],
+    profile: Annotated[
+        Path, typer.Option("--profile", help="Profile directory to tailor from.")
+    ] = Path("profile.example"),
+    out: Annotated[Path, typer.Option("--out", help="Where to write the run directory.")] = Path(
+        "out"
+    ),
+    strict: Annotated[
+        bool, typer.Option("--strict", help="Exclude bullets marked confidence: claim.")
+    ] = False,
+    no_judge: Annotated[
+        bool,
+        typer.Option("--no-judge", help="Skip the LLM grounding judge; free layers stay on."),
+    ] = False,
+) -> None:
+    """Run the whole graph: parse, retrieve, score, select, tailor, verify, compile.
+
+    This is the agent. Both feedback loops are live -- a bullet that fails
+    grounding is retried twice and then dropped, and a resume that spills onto a
+    second page shrinks its budget and reselects.
+    """
+    if not jd.is_file():
+        typer.secho(f"No such file: {jd}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED)
+
+    _load_or_exit(profile)
+
+    if find_compiler() is None:
+        typer.secho(INSTALL_MESSAGE, fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.NO_COMPILER)
+
+    options = RunOptions(out_dir=str(out), strict=strict, use_judge=not no_judge)
+    graph = build_graph()
+
+    try:
+        final = graph.invoke(
+            initial_state(jd.read_text(encoding="utf-8"), profile, options),
+            {"recursion_limit": 100},
+        )
+    except MissingCredentialsError:
+        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
+
+    run_dir = final.get("out_dir")
+    typer.echo()
+    typer.secho(f"Run complete: {run_dir}", fg=typer.colors.CYAN, bold=True)
+    typer.echo(f"  pages           : {final.get('page_count')}")
+    typer.echo(f"  bullets on page : {len(final.get('tailored', []))}")
+    typer.echo(f"  line budget     : {final.get('line_budget')}")
+    typer.echo(f"  layout attempts : {final.get('layout_attempts', 0)}")
+
+    # Dropped bullets are the one outcome worth interrupting for: the resume is
+    # weaker than it could be, and the only alternative was shipping a claim the
+    # verifier could not stand behind.
+    dropped = final.get("dropped_bullets", [])
+    if dropped:
+        typer.secho(
+            f"\n  {len(dropped)} bullet(s) dropped for failing grounding:", fg=typer.colors.YELLOW
+        )
+        for bullet_id in dropped:
+            typer.echo(f"    {bullet_id}")
+
+    if (final.get("page_count") or 0) != 1:
+        typer.secho(
+            f"\nWarning: finished at {final.get('page_count')} pages after "
+            f"{final.get('layout_attempts')} layout attempts.",
+            fg=typer.colors.RED,
+        )
 
 if __name__ == "__main__":
     app()

@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M4 complete.**
+**Status: M0-M5 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -27,7 +27,13 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   deterministic layers and one LLM judge. At the retry cap a bullet is
   **dropped**, never shipped unverified.
 
-The graph itself (M5) is not built yet. **There is no web UI** — that is M9.
+* **M5** — the graph: everything above wired into a LangGraph `StateGraph`
+  with both feedback cycles from spec §2 and their hard caps. A broken
+  document is repaired from the compiler's own error message; a two-page
+  resume shrinks its line budget and reselects until it fits.
+
+The cover letter (M6), HITL and the tracker (M7), and the eval harness (M8)
+are not built yet. **There is no web UI** — that is M9.
 
 ---
 
@@ -104,7 +110,7 @@ re-running while you iterate downstream costs nothing. The prompt hash is in the
 key deliberately: editing `prompts/parse_jd.md` invalidates the parses it
 produced rather than silently serving stale ones.
 
-Model is `claude-opus-5` (`PARSE_MODEL` in `llm.py`), about /usr/bin/bash.05–0.07 per
+Model is `claude-opus-5` (`PARSE_MODEL` in `llm.py`), about $0.05–0.07 per
 posting.
 
 ### Analysing a posting  ← the one you'll use daily
@@ -127,6 +133,25 @@ the first question anyone asks of a selector.
 `FitReport`. Needs `ANTHROPIC_API_KEY`; costs roughly $0.20 per new posting and
 nothing on a re-run.
 
+### Running the whole agent
+
+```bash
+uv run resume-agent run --jd evals/datasets/jds/mid.txt
+```
+
+Parse → retrieve → score → select → tailor → verify → render → compile →
+inspect → finalize, with both loops live. Writes a run directory containing
+`resume.pdf`, `resume.tex`, `compile.log` and `run.json`.
+
+`run.json` is the record spec §5 asks for: the parsed posting, the fit report,
+which bullet ids were used, which were **dropped for failing grounding**, the
+model ids and prompt hashes that produced it, and the profile's git SHA. It is
+what lets you ask, months from now, which bullets appear in applications that
+got callbacks.
+
+`--no-judge` skips the paid grounding judge while keeping both free
+deterministic layers. `--strict` drops `confidence: claim` bullets.
+
 ### Searching the knowledge base
 
 ```bash
@@ -147,6 +172,68 @@ forces it.
 
 ---
 
+## The graph
+
+Both feedback cycles from spec §2, with their caps. This diagram is **generated
+from the compiled graph** by `scripts/render_graph.py`, not drawn by hand, so it
+cannot quietly stop being true when an edge moves.
+
+<!-- graph:start -->
+
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	parse_jd(parse_jd)
+	retrieve(retrieve)
+	score(score)
+	select(select)
+	tailor(tailor)
+	verify(verify)
+	render(render)
+	compile(compile)
+	inspect(inspect)
+	fix_latex(fix_latex)
+	shrink_budget(shrink_budget)
+	note_overfull(note_overfull)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> parse_jd;
+	compile --> inspect;
+	fix_latex --> compile;
+	inspect -.-> finalize;
+	inspect -.-> fix_latex;
+	inspect -. &nbsp;retailor&nbsp; .-> note_overfull;
+	inspect -. &nbsp;reselect&nbsp; .-> shrink_budget;
+	note_overfull --> tailor;
+	parse_jd --> retrieve;
+	render --> compile;
+	retrieve --> score;
+	score --> select;
+	select --> tailor;
+	shrink_budget --> select;
+	tailor --> verify;
+	verify -.-> render;
+	verify -.-> tailor;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+```
+
+<!-- graph:end -->
+
+* **Grounding cycle** (`verify` → `tailor`), 2 retries, then the bullet is
+  dropped with a loud log. Never ship an unverified claim.
+* **Layout cycle** (`inspect` → `fix_latex` / `shrink_budget` / `note_overfull`),
+  3 retries, then finalize with the best artifact so far. Never spin.
+
+---
+
 ## Development
 
 There is a `Makefile`, but `make` is not standard on Windows. The underlying
@@ -163,6 +250,8 @@ commands:
 | Inspect retrieval | `make search Q="redis"` | `uv run resume-agent search "redis" --explain` |
 | Parse a JD | `make parse-jd` | `uv run resume-agent parse-jd --jd evals/datasets/jds/mid.txt` |
 | Analyse a JD | `make analyze` | `uv run resume-agent analyze --jd evals/datasets/jds/mid.txt` |
+| Run the agent | `make run` | `uv run resume-agent run --jd evals/datasets/jds/mid.txt` |
+| Regenerate the graph diagram | `make graph` | `uv run python scripts/render_graph.py` |
 | Re-derive the line budget | `make calibrate-budget` | `uv run python scripts/calibrate_line_budget.py` |
 | Regenerate JD snapshots | `make snapshots` | `REGEN_SNAPSHOTS=1 uv run pytest tests/test_parse_jd.py -m llm` |
 | Re-derive `CHARS_PER_LINE` | `make calibrate` | `uv run python scripts/calibrate_chars_per_line.py` |
@@ -195,6 +284,10 @@ src/resume_agent/
   grounding/vocabulary.py which technologies a rewrite may name
   latex/layout.py         line budget, measured by compiling six profile shapes
   analyze.py / report.py  the analyze pipeline and its human-readable output
+  graph/state.py          AgentState + RunOptions
+  graph/build.py          every node, and EVERY edge (CLAUDE.md rule 6)
+  graph/nodes/            one file per node; nodes import nothing from each other
+  cache.py                model-output cache for the expensive nodes
   latex/escape.py         latex_escape() -- one regex pass, 13 characters
   latex/env.py            the Jinja environment with \VAR{} / \BLOCK{} delimiters
   latex/context.py        Profile -> template dict (dates, ordering, skill grouping)

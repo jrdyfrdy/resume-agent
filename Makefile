@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search parse-jd analyze snapshots calibrate calibrate-budget golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run graph snapshots calibrate calibrate-budget golden clean
 
 setup:
 	uv sync
@@ -37,6 +37,13 @@ parse-jd:
 
 analyze:
 	uv run resume-agent analyze --jd $(JD)
+
+run:
+	uv run resume-agent run --jd $(JD)
+
+# Regenerate the graph diagram in the README from the compiled graph.
+graph:
+	uv run python scripts/render_graph.py
 
 # Regenerate the committed JD parse snapshots. Needs ANTHROPIC_API_KEY;
 # costs roughly $$0.20 on Claude Opus 5.
