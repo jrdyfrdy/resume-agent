@@ -45,6 +45,7 @@ from resume_agent.graph.nodes.fix_latex import fix_latex
 from resume_agent.graph.nodes.parse_jd import parse_job_description
 from resume_agent.graph.nodes.render import compile_pdf, inspect_pdf, render_latex
 from resume_agent.graph.nodes.retrieve import retrieve_evidence
+from resume_agent.graph.nodes.review import human_review, note_revision_cap, route_after_review
 from resume_agent.graph.nodes.score import build_fit_report, score_fit
 from resume_agent.graph.nodes.select import select_content
 from resume_agent.graph.nodes.tailor import tailor_bullets
@@ -267,14 +268,18 @@ def _after_layout(state: AgentState) -> str:
 
 
 def route_after_cover_letter(state: AgentState) -> str:
-    """Always forward.
+    """Always forward, to the review gate.
 
-    A conditional edge with one destination looks redundant, and is: it is
-    here so that skipping the letter (`--no-cover-letter`) and any future
-    branch after it are a change to this function rather than a change to
-    the graph's shape.
+    A conditional edge with one destination looks redundant, and is: it is here
+    so that a future branch after the letter is a change to this function rather
+    than a change to the graph's shape.
+
+    The key names the *outcome*, not the destination. Naming destinations is how
+    the layout loop ended up with an edge labelled "finalize" pointing at
+    `cover_letter` when a node was inserted -- and the diagram is generated, so
+    a stale label is visible to everyone.
     """
-    return "finalize"
+    return "review"
 
 
 def node_shrink_budget(state: AgentState) -> dict:
@@ -313,6 +318,7 @@ def node_note_overfull(state: AgentState) -> dict:
 
 def build_graph(
     *,
+    checkpointer=None,
     score_llm: BaseChatModel | None = None,
     tailor_llm: BaseChatModel | None = None,
     judge_llm: BaseChatModel | None = None,
@@ -347,6 +353,8 @@ def build_graph(
         "cover_letter",
         build_cover_letter_subgraph(draft_llm=letter_llm, judge_llm=letter_judge_llm),
     )
+    builder.add_node("human_review", human_review)
+    builder.add_node("revision_cap", note_revision_cap)
     builder.add_node("finalize", finalize)
 
     # --- the straight line ---------------------------------------------------
@@ -379,7 +387,7 @@ def build_graph(
             # quotes the resume's verified bullets, so it cannot be written
             # until they have stopped changing.
             "layout_ok": "cover_letter",
-            "skip_letter": "finalize",
+            "skip_letter": "human_review",
         },
     )
     # A repaired document goes straight back to the compiler -- the compiler is
@@ -391,11 +399,23 @@ def build_graph(
     builder.add_conditional_edges(
         "cover_letter",
         route_after_cover_letter,
-        {"finalize": "finalize"},
+        {"review": "human_review"},
     )
+
+    # --- human-in-the-loop (spec 5), revise capped at 3 rounds ---------------
+    builder.add_conditional_edges(
+        "human_review",
+        route_after_review,
+        {"approve": "finalize", "revise": "tailor", "cap": "revision_cap"},
+    )
+    builder.add_edge("revision_cap", "finalize")
+
     builder.add_edge("finalize", END)
 
-    return builder.compile()
+    # A checkpointer is what makes a paused run survive the process that
+    # started it (spec 8's M7). Without one, `interrupt` still pauses -- but
+    # only until the interpreter exits.
+    return builder.compile(checkpointer=checkpointer)
 
 
 def initial_state(
@@ -425,5 +445,7 @@ def initial_state(
         "letter_critiques": [],
         "letter_attempts": 0,
         "letter_verified": False,
+        "revision_rounds": 0,
+        "review_action": "",
         "errors": [],
     }

@@ -48,6 +48,8 @@ class RunOptions(BaseModel):
     # M6. Off skips the whole subgraph -- useful when iterating on the resume
     # half, since a letter costs a draft call plus a judge call per attempt.
     write_cover_letter: bool = True
+    # Spec 5: gate `human_review` behind a flag "so batch runs don't block".
+    interactive: bool = False
 
 
 class AgentState(TypedDict, total=False):
@@ -80,6 +82,7 @@ class AgentState(TypedDict, total=False):
     tailored: list[TailoredBullet]
     cover_letter: CoverLetter | None
     letter_verified: bool
+    review_action: str
 
     # -- artifacts -----------------------------------------------------------
     tex_source: str | None
@@ -94,6 +97,7 @@ class AgentState(TypedDict, total=False):
     grounding_attempts: int
     layout_attempts: int
     letter_attempts: int
+    revision_rounds: int
 
     # Genuinely append-only.
     dropped_bullets: Annotated[list[str], operator.add]

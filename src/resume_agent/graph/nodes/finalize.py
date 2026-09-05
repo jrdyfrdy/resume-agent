@@ -28,6 +28,8 @@ from resume_agent.kb.loader import load_profile
 from resume_agent.latex.compile import compile_tex
 from resume_agent.latex.env import render_template
 from resume_agent.llm import JUDGE_MODEL, PARSE_MODEL, prompt_version
+from resume_agent.tracker.db import insert_application
+from resume_agent.tracker.models import ApplicationRow
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +123,9 @@ def finalize(state: AgentState) -> dict:
     }
     (run_dir / "run.json").write_text(json.dumps(run_record, indent=2), encoding="utf-8")
 
-    logger.info("finalize: wrote %s", run_dir)
+    application_id = _record_application(state, run_dir, letter)
+
+    logger.info("finalize: wrote %s (application #%s)", run_dir, application_id)
     return {
         "out_dir": str(run_dir),
         "pdf_path": str(final_pdf) if final_pdf else state.get("pdf_path"),
@@ -162,3 +166,36 @@ def _write_cover_letter(state: AgentState, letter, run_dir: Path) -> None:
     else:
         (run_dir / "cover_letter.log").write_text(result.log, encoding="utf-8")
         logger.error("finalize: cover letter did not compile; see cover_letter.log")
+
+
+def _record_application(state: AgentState, run_dir: Path, letter) -> int | None:
+    """Insert the tracker row. Spec 5: "insert a tracker row".
+
+    Never fatal. The artifacts are already on disk by the time this runs, and
+    losing a bookkeeping row is not a reason to fail a run that produced a
+    perfectly good resume -- but it is a reason to say so loudly, because the
+    tracker is the only record that survives the run directory being tidied away.
+    """
+    job = state.get("job_spec")
+    if job is None:
+        return None
+
+    fit = state.get("fit_report")
+    try:
+        return insert_application(
+            ApplicationRow(
+                company=job.company,
+                title=job.title,
+                jd_hash=job.source_hash,
+                run_dir=str(run_dir),
+                recommendation=fit.recommendation if fit else None,
+                overall_fit=fit.overall_fit if fit else None,
+                page_count=state.get("page_count"),
+                cover_letter_words=letter.word_count if letter else None,
+                bullet_ids=[t.source_id for t in state.get("tailored", [])],
+                dropped_bullets=state.get("dropped_bullets", []),
+            )
+        )
+    except Exception as exc:  # noqa: BLE001 - bookkeeping must not fail a good run
+        logger.error("finalize: could not write the tracker row: %s", exc)
+        return None

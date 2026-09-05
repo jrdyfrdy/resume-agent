@@ -7,7 +7,7 @@ structured career knowledge base.
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 
-**Status: M0-M6 complete.**
+**Status: M0-M7 complete.**
 
 * **M0** — the deterministic LaTeX pipeline: `profile.example/` → Pydantic →
   Jinja2 → `.tex` → tectonic → a one-page PDF.
@@ -37,7 +37,11 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   technology checked against the knowledge base, and a judge that reads the
   résumé's actual bullets to catch a letter that contradicts them.
 
-HITL and the tracker (M7) and the eval harness (M8) are not built yet. **There is no web UI** — that is M9.
+* **M7** — human-in-the-loop, durable checkpoints and the application
+  tracker: `--interactive` pauses at a review gate, the paused run survives
+  the process that started it, and every finished run writes a tracker row.
+
+The eval harness (M8) is not built yet. **There is no web UI** — that is M9.
 
 ---
 
@@ -160,6 +164,38 @@ résumé's own bullets. `--no-cover-letter` skips it.
 `--no-judge` skips the paid grounding judge while keeping both free
 deterministic layers. `--strict` drops `confidence: claim` bullets.
 
+### Reviewing before you send
+
+```bash
+uv run resume-agent run --jd job.txt --interactive
+```
+
+Stops at a review gate showing the recommendation, the must-have gaps, anything
+the verifier dropped, the bullets, and the letter — then **exits**. The paused
+run is checkpointed to SQLite, so it is still there tomorrow, or after a reboot:
+
+```bash
+uv run resume-agent resume-run --jd job.txt
+uv run resume-agent resume-run --jd job.txt --revise "lead with the Kafka work"
+```
+
+`--revise` feeds your note back as a critique and re-tailors, up to three rounds.
+
+### The tracker
+
+Every finished run writes a row. The `outcome` column starts empty because it is
+the one thing that cannot be computed:
+
+```bash
+uv run resume-agent applications
+uv run resume-agent applications --set-outcome-for 3 --to callback
+uv run resume-agent applications --by-bullet
+```
+
+`--by-bullet` answers the question spec §11 poses — *which bullets appear in
+applications that got callbacks?* — and it is worth exactly as much as the
+outcomes you bother to record.
+
 ### Searching the knowledge base
 
 ```bash
@@ -209,21 +245,27 @@ graph TD;
 	shrink_budget(shrink_budget)
 	note_overfull(note_overfull)
 	cover_letter(cover_letter)
+	human_review(human_review)
+	revision_cap(revision_cap)
 	finalize(finalize)
 	__end__([<p>__end__</p>]):::last
 	__start__ --> parse_jd;
 	compile --> inspect;
-	cover_letter -.-> finalize;
+	cover_letter -. &nbsp;review&nbsp; .-> human_review;
 	fix_latex --> compile;
+	human_review -. &nbsp;approve&nbsp; .-> finalize;
+	human_review -. &nbsp;cap&nbsp; .-> revision_cap;
+	human_review -. &nbsp;revise&nbsp; .-> tailor;
 	inspect -. &nbsp;layout_ok&nbsp; .-> cover_letter;
-	inspect -. &nbsp;skip_letter&nbsp; .-> finalize;
 	inspect -.-> fix_latex;
+	inspect -. &nbsp;skip_letter&nbsp; .-> human_review;
 	inspect -. &nbsp;retailor&nbsp; .-> note_overfull;
 	inspect -. &nbsp;reselect&nbsp; .-> shrink_budget;
 	note_overfull --> tailor;
 	parse_jd --> retrieve;
 	render --> compile;
 	retrieve --> score;
+	revision_cap --> finalize;
 	score --> select;
 	select --> tailor;
 	shrink_budget --> select;
@@ -242,6 +284,9 @@ graph TD;
   dropped with a loud log. Never ship an unverified claim.
 * **Layout cycle** (`inspect` → `fix_latex` / `shrink_budget` / `note_overfull`),
   3 retries, then finalize with the best artifact so far. Never spin.
+* **Revision cycle** (`human_review` → `tailor`), 3 rounds, then finalize the
+  current draft. Your notes come back as critiques, which is the same shape
+  a verifier objection has.
 * **Cover letter cycle**, inside the `cover_letter` subgraph and invisible
   here by design: draft → verify → draft, 2 retries, then **no letter**. The
   résumé still ships. A letter is one artifact, so unlike a bullet there is
@@ -303,6 +348,9 @@ src/resume_agent/
   graph/build.py          every node, and EVERY edge (CLAUDE.md rule 6)
   graph/nodes/            one file per node; nodes import nothing from each other
   cache.py                model-output cache for the expensive nodes
+  graph/checkpoint.py     SqliteSaver, stable thread ids, type allowlist
+  graph/nodes/review.py   the interrupt() gate and the revision cap
+  tracker/                the application table; outcomes you fill in by hand
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned
   templates/cover_letter.tex.j2  the letter's own template (spec §5)

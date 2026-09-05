@@ -6,6 +6,9 @@
     resume-agent parse-jd --jd evals/datasets/jds/mid.txt       (M2)
     resume-agent analyze  --jd evals/datasets/jds/mid.txt       (M3)
     resume-agent run      --jd evals/datasets/jds/mid.txt       (M5)
+    resume-agent run      --jd ... --interactive                (M7)
+    resume-agent resume-run --jd ...                            (M7)
+    resume-agent applications                                   (M7)
 """
 
 from __future__ import annotations
@@ -15,9 +18,11 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from langgraph.types import Command
 
 from resume_agent.analyze import analyze as run_analysis
 from resume_agent.graph.build import build_graph, initial_state
+from resume_agent.graph.checkpoint import open_checkpointer, thread_config, thread_id_for
 from resume_agent.graph.nodes.parse_jd import JobDescriptionParseError, parse_job_description
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.index import ProfileIndex, index_path_for
@@ -29,6 +34,7 @@ from resume_agent.latex.env import render_template
 from resume_agent.latex.inspect import inspect_output
 from resume_agent.llm import CREDENTIALS_MESSAGE, MissingCredentialsError, has_credentials
 from resume_agent.report import render_fit_report
+from resume_agent.tracker.db import bullets_by_outcome, list_applications, set_outcome
 
 RESUME_TEMPLATE = "jake_resume.tex.j2"
 
@@ -369,6 +375,10 @@ def run(
     no_cover_letter: Annotated[
         bool, typer.Option("--no-cover-letter", help="Skip the cover letter subgraph.")
     ] = False,
+    interactive: Annotated[
+        bool,
+        typer.Option("--interactive", help="Pause for review before finalizing (spec 5)."),
+    ] = False,
 ) -> None:
     """Run the whole graph: parse, retrieve, score, select, tailor, verify, compile.
 
@@ -386,26 +396,56 @@ def run(
         typer.secho(INSTALL_MESSAGE, fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_COMPILER)
 
+    raw_jd = jd.read_text(encoding="utf-8")
     options = RunOptions(
         out_dir=str(out),
         strict=strict,
         use_judge=not no_judge,
         write_cover_letter=not no_cover_letter,
+        interactive=interactive,
     )
-    graph = build_graph()
+
+    # A checkpointer is only needed when the run can pause, but attaching it
+    # always would mean every batch run writing checkpoint rows nobody reads.
+    saver, connection = (open_checkpointer() if interactive else (None, None))
+    config = {"recursion_limit": 100}
+    if interactive:
+        config |= thread_config(thread_id_for(raw_jd, profile))
 
     try:
-        final = graph.invoke(
-            initial_state(jd.read_text(encoding="utf-8"), profile, options),
-            {"recursion_limit": 100},
-        )
+        graph = build_graph(checkpointer=saver)
+        final = graph.invoke(initial_state(raw_jd, profile, options), config)
     except MissingCredentialsError:
         typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
+    finally:
+        if connection is not None:
+            connection.close()
 
+    # A paused run returns the interrupt payload instead of a finished state.
+    if "__interrupt__" in final:
+        _render_review(final["__interrupt__"][0].value)
+        typer.secho(
+            f"\nPaused. Resume with:\n"
+            f"  resume-agent resume-run --jd {jd}\n"
+            f'  resume-agent resume-run --jd {jd} --revise "your notes"',
+            fg=typer.colors.CYAN,
+        )
+        return
+
+    _report_run(final)
+
+
+def _report_run(final: dict, resumed: bool = False) -> None:
+    """Summarise a finished run.
+
+    Shared by `run` and `resume-run` so a resumed run reports identically to one
+    that never paused -- the outcome is the same artifact either way.
+    """
     run_dir = final.get("out_dir")
     typer.echo()
-    typer.secho(f"Run complete: {run_dir}", fg=typer.colors.CYAN, bold=True)
+    verb = "Run resumed and complete" if resumed else "Run complete"
+    typer.secho(f"{verb}: {run_dir}", fg=typer.colors.CYAN, bold=True)
     typer.echo(f"  pages           : {final.get('page_count')}")
     typer.echo(f"  bullets on page : {len(final.get('tailored', []))}")
     typer.echo(f"  line budget     : {final.get('line_budget')}")
@@ -414,7 +454,7 @@ def run(
     letter = final.get("cover_letter")
     if letter is not None:
         typer.echo(f"  cover letter    : {letter.word_count} words")
-    elif options.write_cover_letter:
+    elif final.get("options") and final["options"].write_cover_letter:
         typer.secho(
             "  cover letter    : ABANDONED (failed verification; see run.json)",
             fg=typer.colors.RED,
@@ -437,6 +477,156 @@ def run(
             f"{final.get('layout_attempts')} layout attempts.",
             fg=typer.colors.RED,
         )
+
+
+
+
+def _render_review(payload: dict) -> None:
+    """Show the human what they are approving. Spec 5's interrupt payload."""
+    typer.echo()
+    typer.secho("REVIEW REQUIRED", fg=typer.colors.YELLOW, bold=True)
+    typer.echo(f"  {payload.get('title')} at {payload.get('company')}")
+    typer.echo(
+        f"  recommendation : {payload.get('recommendation')} "
+        f"(fit {(payload.get('overall_fit') or 0):.0%})"
+    )
+    typer.echo(f"  pages          : {payload.get('page_count')}")
+    if payload.get("cover_letter_words"):
+        typer.echo(f"  cover letter   : {payload['cover_letter_words']} words")
+
+    # Gaps first, for the same reason `analyze` puts them first: they are what
+    # decides whether to send this at all.
+    if payload.get("must_have_gaps"):
+        typer.secho("\n  Missing must-haves:", fg=typer.colors.RED)
+        for gap in payload["must_have_gaps"]:
+            typer.echo(f"    - {gap}")
+
+    if payload.get("dropped_bullets"):
+        typer.secho("\n  Dropped for failing grounding:", fg=typer.colors.YELLOW)
+        for bullet_id in payload["dropped_bullets"]:
+            typer.echo(f"    - {bullet_id}")
+
+    typer.echo("\n  Bullets on the resume:")
+    for text in payload.get("selected_bullets", []):
+        typer.echo(f"    - {text}")
+
+    if payload.get("cover_letter"):
+        typer.echo("\n  Cover letter:")
+        for line in payload["cover_letter"].splitlines():
+            typer.echo(f"    {line}")
+
+    typer.echo(f"\n  PDF: {payload.get('pdf_path')}")
+
+
+@app.command()
+def resume_run(
+    jd: Annotated[Path, typer.Option("--jd", help="The posting this run was started from.")],
+    profile: Annotated[
+        Path, typer.Option("--profile", help="Profile directory the run used.")
+    ] = Path("profile.example"),
+    revise: Annotated[
+        str, typer.Option("--revise", help="Ask for changes instead of approving.")
+    ] = "",
+) -> None:
+    """Resume a paused run. Spec 8's M7: survives a process restart.
+
+    Nothing is carried over from the earlier process except the arguments: the
+    thread id is recomputed from the posting and the profile, and the state
+    comes back out of the checkpoint database.
+    """
+    if not jd.is_file():
+        typer.secho(f"No such file: {jd}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.JD_PARSE_FAILED)
+
+    raw_jd = jd.read_text(encoding="utf-8")
+    thread = thread_id_for(raw_jd, profile)
+    saver, connection = open_checkpointer()
+
+    try:
+        graph = build_graph(checkpointer=saver)
+        config = thread_config(thread)
+
+        snapshot = graph.get_state(config)
+        if not snapshot.next:
+            typer.secho(
+                f"No paused run for {jd} + {profile}. Start one with "
+                f"`resume-agent run --jd {jd} --interactive`.",
+                fg=typer.colors.YELLOW,
+                err=True,
+            )
+            raise typer.Exit(ExitCode.OK)
+
+        decision = (
+            {"action": "revise", "notes": revise} if revise else {"action": "approve"}
+        )
+        final = graph.invoke(Command(resume=decision), config)
+        _report_run(final, resumed=True)
+    finally:
+        connection.close()
+
+
+@app.command()
+def applications(
+    limit: Annotated[int, typer.Option("--limit", help="How many rows to show.")] = 20,
+    outcome: Annotated[
+        str, typer.Option("--outcome", help="Only show applications with this outcome.")
+    ] = "",
+    set_outcome_for: Annotated[
+        int, typer.Option("--set-outcome-for", help="Application id to update.")
+    ] = 0,
+    to: Annotated[
+        str, typer.Option("--to", help="The outcome to record, e.g. callback.")
+    ] = "",
+    by_bullet: Annotated[
+        bool,
+        typer.Option("--by-bullet", help="Which bullets appear in which outcomes."),
+    ] = False,
+) -> None:
+    """The application tracker.
+
+    `--by-bullet` answers spec 11's question -- "which bullets appear in
+    applications that got callbacks?" -- which is only as good as the outcomes
+    you have recorded.
+    """
+    if set_outcome_for:
+        if not to:
+            typer.secho("--set-outcome-for needs --to.", fg=typer.colors.RED, err=True)
+            raise typer.Exit(ExitCode.JD_PARSE_FAILED)
+        if set_outcome(set_outcome_for, to):
+            typer.secho(f"Application #{set_outcome_for}: {to}", fg=typer.colors.GREEN)
+        else:
+            typer.secho(f"No application #{set_outcome_for}.", fg=typer.colors.RED, err=True)
+        return
+
+    if by_bullet:
+        counts = bullets_by_outcome()
+        if not counts:
+            typer.secho(
+                "No outcomes recorded yet. Use --set-outcome-for <id> --to callback.",
+                fg=typer.colors.YELLOW,
+            )
+            return
+        typer.echo()
+        for bullet_id, outcomes in sorted(counts.items()):
+            rendered = ", ".join(f"{k}={v}" for k, v in sorted(outcomes.items()))
+            typer.echo(f"  {bullet_id:34s} {rendered}")
+        typer.echo()
+        return
+
+    rows = list_applications(limit=limit, outcome=outcome or None)
+    if not rows:
+        typer.secho("No applications recorded yet.", fg=typer.colors.YELLOW)
+        return
+
+    typer.echo()
+    typer.secho(f"{'id':>4}  {'date':<11} {'company':<24} {'fit':>5}  outcome", bold=True)
+    for row in rows:
+        fit = f"{row.overall_fit:.0%}" if row.overall_fit is not None else "-"
+        typer.echo(
+            f"{row.id:>4}  {row.applied_on:<11} {row.company[:24]:<24} {fit:>5}  "
+            f"{row.outcome or '-'}"
+        )
+    typer.echo()
 
 if __name__ == "__main__":
     app()

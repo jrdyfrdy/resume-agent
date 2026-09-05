@@ -2,7 +2,7 @@
 # you do not have `make` (Windows, typically) the commands underneath work
 # directly -- see README.md.
 
-.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run graph snapshots calibrate calibrate-budget golden clean
+.PHONY: setup test test-fast lint fmt build index search parse-jd analyze run review applications graph snapshots calibrate calibrate-budget golden clean
 
 setup:
 	uv sync
@@ -40,6 +40,12 @@ analyze:
 
 run:
 	uv run resume-agent run --jd $(JD)
+
+review:
+	uv run resume-agent run --jd $(JD) --interactive
+
+applications:
+	uv run resume-agent applications
 
 # Regenerate the graph diagram in the README from the compiled graph.
 graph:
