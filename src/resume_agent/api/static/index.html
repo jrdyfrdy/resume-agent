@@ -4,220 +4,648 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>resume-agent</title>
+<meta name="color-scheme" content="light dark">
 <!--
-  Deliberately one file, no build step, no framework.
+  Deliberately one file, no build step, no framework, no network.
 
   Spec 8 asks for a "minimal frontend". A bundler in a Python repo is a second
   toolchain to install, keep current and explain, and this page is a textarea,
-  a log and a PDF viewer. Vanilla plus EventSource is the whole requirement.
+  a progress rail and a PDF viewer. Vanilla plus EventSource is the whole
+  requirement. No webfonts and no CDN either: this is a localhost tool that has
+  to come up with the network unplugged.
+
+  DESIGN DIRECTION -- "galley proof".
+  The product's output is a typeset page, so the interface is a press: warm
+  paper stock inside a dark frame, one proof-mark vermilion accent, and mono
+  type for every measured quantity (elapsed seconds, line budget, node names).
+  Structure is drawn with thin rules and corner brackets rather than with more
+  colour, because the palette has exactly one job -- marking what is live.
 -->
 <style>
+  /* ---------------------------------------------------------------------
+     Tokens. Light is the designed direction; dark is the same system on a
+     darker stock, so the accent and the structure survive the switch.
+     --------------------------------------------------------------------- */
   :root {
-    --bg: #fbfaf8; --panel: #fff; --line: #e4e0d8; --ink: #21201c;
-    --muted: #6b6862; --accent: #3a5a7d; --good: #2f6f4f; --warn: #9a6b1e;
-    --bad: #a33a2f; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --press:      #171613;   /* the dark field the paper sits on */
+    --paper:      #f7f3ea;   /* main interior surface */
+    --paper-2:    #efe9db;   /* recessed paper: rails, wells */
+    --card:       #fffdf8;   /* bright product surfaces */
+    --rule:       #e0d7c5;
+    --rule-firm:  #c7bba3;
+    --ink:        #24221d;
+    --ink-2:      #5d574c;
+    --ink-3:      #726a5c;   /* small mono metadata: 4.8:1 on paper */
+    --ink-4:      #9a9081;   /* architectural stage numbers only: 3.1:1 */
+    --accent:     #b3441f;   /* proof-mark vermilion. Marks live state only. */
+    --on-accent:  #fffdf8;   /* text on an accent fill; flips in dark, see below */
+    --accent-wash:rgba(179, 68, 31, .10);
+    --ok:         #3d6b4d;
+    --warn:       #8a6318;
+    --bad:        #a33222;
+
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+    /* Layered neutral elevation (beautiful-shadows), as plain CSS. One
+       strength per component; never stacked on a single element. */
+    --shadow-sm: 0 2px 3px -1px rgba(0,0,0,.10), 0 1px 0 0 rgba(25,28,33,.02),
+                 0 0 0 1px rgba(25,28,33,.08);
+    --shadow-md: 0 0 0 1px rgba(0,0,0,.06), 0 1px 1px -.5px rgba(0,0,0,.06),
+                 0 3px 3px -1.5px rgba(0,0,0,.06), 0 6px 6px -3px rgba(0,0,0,.06),
+                 0 12px 12px -6px rgba(0,0,0,.06), 0 24px 24px -12px rgba(0,0,0,.06);
+    --shadow-lg: 0 2.8px 2.2px rgba(0,0,0,.034), 0 6.7px 5.3px rgba(0,0,0,.048),
+                 0 12.5px 10px rgba(0,0,0,.06), 0 22.3px 17.9px rgba(0,0,0,.072),
+                 0 41.8px 33.4px rgba(0,0,0,.086), 0 100px 80px rgba(0,0,0,.12);
   }
+
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #1b1a18; --panel: #232220; --line: #35332f; --ink: #ece9e3;
-      --muted: #9b968d; --accent: #8ab0d4; --good: #7bbf98; --warn: #d6a75a;
-      --bad: #e08b7f;
+      --press:      #0b0b0a;
+      --paper:      #1b1a17;
+      --paper-2:    #232320;
+      --card:       #27251f;
+      --rule:       #36332c;
+      --rule-firm:  #4c473e;
+      --ink:        #ece7db;
+      --ink-2:      #a8a092;
+      --ink-3:      #968d7e;
+      --ink-4:      #7a7264;
+      --accent:     #e3764c;
+      /* The dark accent is light enough that white on it falls to 3.0:1, so the
+         CTA takes dark ink instead. Same button, legible on both stocks. */
+      --on-accent:  #21150f;
+      --accent-wash:rgba(227, 118, 76, .14);
+      --ok:         #7fb894;
+      --warn:       #d6a75a;
+      --bad:        #e5897a;
+      /* Neutral drop shadows vanish on a dark ground, so elevation is carried
+         by a ring instead. Same role, different material. */
+      --shadow-sm: 0 0 0 1px rgba(255,255,255,.05);
+      --shadow-md: 0 0 0 1px rgba(255,255,255,.06), 0 8px 24px -12px rgba(0,0,0,.9);
+      --shadow-lg: 0 0 0 1px rgba(255,255,255,.07), 0 24px 60px -24px rgba(0,0,0,.95);
     }
   }
+
   * { box-sizing: border-box; }
+
   body {
-    margin: 0; background: var(--bg); color: var(--ink);
-    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, sans-serif;
+    margin: 0;
+    background: var(--press);
+    color: var(--ink);
+    font: 15px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
   }
+
+  /* The framed master container: the whole experience is one sheet of paper
+     laid on the dark field. */
+  .sheet {
+    max-width: 1080px;
+    margin: 22px auto;
+    background: var(--paper);
+    border-radius: 16px;
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+    /* Low-contrast diagonal tooth so the paper reads as a material rather
+       than as a flat fill. Kept well below the type's contrast. */
+    background-image: repeating-linear-gradient(
+      135deg, transparent 0 6px, rgba(120, 100, 60, .022) 6px 7px);
+  }
+  @media (max-width: 720px) { .sheet { margin: 0; border-radius: 0; } }
+
+  /* ---------------------------------------------------------------- header */
   header {
-    padding: 18px 24px; border-bottom: 1px solid var(--line);
-    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 15px 26px;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper-2);
   }
-  header h1 { margin: 0; font-size: 17px; letter-spacing: .01em; }
-  header .sub { color: var(--muted); font-size: 13px; }
-  main { display: grid; grid-template-columns: minmax(320px, 1fr) minmax(340px, 1.1fr); gap: 20px; padding: 20px 24px; align-items: start; }
-  @media (max-width: 880px) { main { grid-template-columns: 1fr; } }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
-  .panel h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  .wordmark {
+    font: 600 14px/1 var(--mono);
+    letter-spacing: -.01em;
+    display: flex; align-items: center; gap: 8px;
+  }
+  /* The press mark. A drawn glyph, not an icon-tile: it is the only brand
+     element and it stands for the printed page. */
+  .wordmark i {
+    width: 11px; height: 14px; border: 1.5px solid var(--accent);
+    border-radius: 1px; position: relative; display: inline-block;
+  }
+  .wordmark i::after {
+    content: ""; position: absolute; left: 2px; right: 2px; top: 3px;
+    height: 1.5px; background: var(--accent);
+    box-shadow: 0 3px 0 var(--accent), 0 6px 0 var(--accent);
+  }
+  .facts { font: 12px/1 var(--mono); color: var(--ink-2); }
+  .facts b { font-weight: 600; color: var(--ink); }
+  .ready { margin-left: auto; font: 12px/1 var(--mono); display: flex; align-items: center; gap: 7px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
+  .ready.is-ready .dot { background: var(--ok); }
+  .ready.is-blocked .dot { background: var(--bad); }
+  .ready.is-blocked { color: var(--bad); }
+
+  /* ------------------------------------------------------------------ hero */
+  .hero { padding: 46px 26px 30px; max-width: 760px; }
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 18px;
+  }
+  h1 {
+    font: 400 clamp(29px, 4.3vw, 45px)/1.12 var(--serif);
+    letter-spacing: -.017em; margin: 0 0 18px; text-wrap: balance;
+  }
+  h1 em { font-style: italic; color: var(--accent); }
+  .lede { margin: 0; font-size: 16.5px; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
+
+  /* Masked headline reveal -- the one authored entrance on the page. */
+  @media (prefers-reduced-motion: no-preference) {
+    .hero > * { animation: rise .62s cubic-bezier(.22,.68,.3,1) backwards; }
+    .hero > :nth-child(1) { animation-delay: .02s; }
+    .hero > :nth-child(2) { animation-delay: .08s; }
+    .hero > :nth-child(3) { animation-delay: .16s; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(9px); clip-path: inset(0 0 100% 0); }
+      to   { opacity: 1; transform: none; clip-path: inset(0 0 -20% 0); }
+    }
+  }
+
+  /* ------------------------------------------------------------ containers */
+  main { padding: 0 26px 30px; }
+  .panel {
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 18px; box-shadow: var(--shadow-md);
+  }
+  .panel + .panel, section + section { margin-top: 22px; }
+  h2 {
+    font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 13px;
+  }
+
+  /* Corner brackets on the focal card only. Instrumented, not decorated:
+     they mark where the one input lives. */
+  .composer { position: relative; }
+  .composer::before, .composer::after {
+    content: ""; position: absolute; width: 13px; height: 13px;
+    border: 1.5px solid var(--accent); opacity: .5; pointer-events: none;
+  }
+  .composer::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
+  .composer::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
+
+  /* --------------------------------------------------------------- composer */
   textarea {
-    width: 100%; min-height: 190px; resize: vertical; padding: 10px;
-    border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
-    color: var(--ink); font: 13px/1.5 var(--mono);
+    width: 100%; min-height: 178px; resize: vertical; padding: 13px 14px;
+    border: 1px solid var(--rule); border-radius: 7px;
+    background: var(--paper); color: var(--ink);
+    font: 13px/1.62 var(--mono);
   }
-  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
-  label.check { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  textarea::placeholder { color: var(--ink-3); }
+  textarea:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  .controls { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+  .opts { display: flex; gap: 15px; flex-wrap: wrap; }
+  label.check {
+    display: flex; align-items: center; gap: 6px;
+    font: 12.5px/1 var(--mono); color: var(--ink-2); cursor: pointer;
+  }
+  label.check input { accent-color: var(--accent); margin: 0; }
+
   button {
-    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
-    padding: 9px 18px; font-size: 14px; font-weight: 600; cursor: pointer;
+    margin-left: auto; background: var(--accent); color: var(--on-accent);
+    border: 0; border-radius: 7px; padding: 10px 20px;
+    font: 600 14px/1 var(--sans); cursor: pointer;
+    box-shadow: var(--shadow-sm); transition: filter .15s, transform .15s;
   }
-  button:disabled { opacity: .5; cursor: not-allowed; }
-  #log { font: 12.5px/1.7 var(--mono); max-height: 300px; overflow-y: auto; }
-  #log div { display: flex; gap: 10px; }
-  #log .t { color: var(--muted); min-width: 46px; text-align: right; }
-  #log .n { color: var(--accent); }
-  #log .done .n { color: var(--good); }
-  #log .err .n { color: var(--bad); }
-  #log .model .n { color: var(--warn); }
-  .stat { display: flex; justify-content: space-between; padding: 3px 0; font-size: 13.5px; }
-  .stat span:first-child { color: var(--muted); }
-  ul { margin: 6px 0 0; padding-left: 18px; }
-  li { margin-bottom: 5px; font-size: 13.5px; }
-  .bad { color: var(--bad); }
-  .warnbox { border-left: 3px solid var(--warn); padding-left: 10px; margin-top: 10px; font-size: 13px; color: var(--muted); }
-  embed { width: 100%; height: 460px; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; }
-  a.dl { font-size: 13px; color: var(--accent); }
+  button:hover:not(:disabled) { filter: brightness(1.08); }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .42; cursor: not-allowed; }
+
+  .note {
+    margin: 13px 0 0; padding-left: 11px; border-left: 2px solid var(--rule-firm);
+    font-size: 12.5px; color: var(--ink-3);
+  }
+  .note.blocked { border-color: var(--bad); color: var(--ink-2); }
+  .note code {
+    font: 12px var(--mono); background: var(--accent-wash);
+    padding: 1px 5px; border-radius: 3px; color: var(--ink);
+  }
+
+  /* ------------------------------------------------------------------ rail */
+  /* The real sixteen graph nodes, grouped by the phase they belong to. This
+     is the page's strongest authored moment and it is entirely honest: it is
+     the pipeline, lighting up as the pipeline runs. */
+  .rail {
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    background: var(--card); border: 1px solid var(--rule);
+    border-radius: 8px; overflow: hidden; box-shadow: var(--shadow-md);
+  }
+  /* Separators are drawn by each cell rather than by gaps over a coloured
+     grid: five phases into two columns leaves an orphan cell, and the gap
+     technique renders that hole as a solid block of rule colour. */
+  .rail .phase {
+    padding: 13px 12px 14px;
+    box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule);
+  }
+  .phase-name {
+    font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3); margin-bottom: 11px;
+  }
+  .phase ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .phase li {
+    display: flex; align-items: center; gap: 7px;
+    font: 11.5px/1.35 var(--mono); color: var(--ink-3);
+    transition: color .22s;
+  }
+  .phase li .num { color: var(--ink-4); font-size: 10px; transition: color .22s; }
+  /* The tick itself: a thin rule that fills as the stage runs. */
+  .phase li .tick {
+    width: 3px; height: 13px; border-radius: 2px; flex: none;
+    background: var(--rule); transition: background .22s;
+  }
+  .phase li[data-state="active"] { color: var(--accent); }
+  .phase li[data-state="active"] .num { color: var(--accent); }
+  .phase li[data-state="active"] .tick { background: var(--accent); }
+  .phase li[data-state="done"] { color: var(--ink); }
+  .phase li[data-state="done"] .num { color: var(--ink-3); }
+  .phase li[data-state="done"] .tick { background: var(--ok); }
+  @media (prefers-reduced-motion: no-preference) {
+    .phase li[data-state="active"] .tick { animation: beat 1.15s ease-in-out infinite; }
+    @keyframes beat { 50% { opacity: .32; } }
+  }
+  .rail-note { margin: 10px 0 0; font: 11.5px/1.5 var(--mono); color: var(--ink-3); }
+  @media (max-width: 860px) { .rail { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 460px) { .rail { grid-template-columns: 1fr; } }
+
+  /* ------------------------------------------------------------------- log */
+  #log { font: 12.5px/1.75 var(--mono); max-height: 292px; overflow-y: auto; }
+  #log .row { display: flex; gap: 11px; align-items: baseline; }
+  #log .t { color: var(--ink-3); min-width: 46px; text-align: right; flex: none; font-size: 11.5px; }
+  #log .mark { width: 12px; flex: none; color: var(--ink-3); }
+  #log .name { color: var(--ink); }
+  #log .detail { color: var(--ink-3); }
+  #log .is-model .name { color: var(--warn); }
+  #log .is-status .name { color: var(--ok); }
+  #log .is-error .name, #log .is-error .mark { color: var(--bad); }
+  @media (prefers-reduced-motion: no-preference) {
+    #log .row { animation: slip .28s ease-out backwards; }
+    @keyframes slip { from { opacity: 0; transform: translateY(4px); } }
+  }
+  .empty { font: 12.5px var(--mono); color: var(--ink-3); }
+
+  /* ---------------------------------------------------------------- result */
+  .verdict { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+  .verdict .role { font: 400 21px/1.25 var(--serif); }
+  .badge {
+    font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
+    padding: 5px 9px; border-radius: 4px; border: 1px solid currentColor;
+  }
+  .badge.strong_apply, .badge.apply { color: var(--ok); }
+  .badge.stretch { color: var(--warn); }
+  .badge.skip { color: var(--bad); }
+
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    background: var(--paper); border: 1px solid var(--rule);
+    border-radius: 8px; overflow: hidden;
+  }
+  .stat { padding: 11px 13px; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
+  .stat .k { font: 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .stat .v { font: 400 20px/1.25 var(--serif); margin-top: 5px; }
+  .stat .v small { font: 11px var(--mono); color: var(--ink-3); }
+
+  .block { margin-top: 20px; }
+  .block h3 {
+    font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    margin: 0 0 9px; color: var(--ink-3);
+  }
+  .block h3.alarm { color: var(--bad); }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li {
+    padding: 7px 0 7px 15px; border-top: 1px solid var(--rule);
+    font-size: 13.5px; position: relative;
+  }
+  .list li::before {
+    content: ""; position: absolute; left: 0; top: 15px;
+    width: 6px; height: 1px; background: var(--rule-firm);
+  }
+  .list.alarm li::before { background: var(--bad); }
+
+  embed {
+    width: 100%; height: 520px; margin-top: 11px; display: block;
+    border: 1px solid var(--rule); border-radius: 8px;
+    background: var(--paper-2); box-shadow: var(--shadow-lg);
+  }
+  a { color: var(--accent); }
+  .dl { display: inline-block; margin-top: 10px; font: 12.5px var(--mono); }
+
+  .letter p { margin: 0 0 11px; font-size: 14.5px; max-width: 68ch; }
+  .letter p:last-child { margin-bottom: 0; }
+
+  .errors { margin-top: 16px; padding: 11px 13px; border-left: 2px solid var(--bad); background: var(--accent-wash); font: 12.5px/1.6 var(--mono); }
+
+  /* ---------------------------------------------------------------- footer */
+  footer {
+    padding: 17px 26px; border-top: 1px solid var(--rule); background: var(--paper-2);
+    font: 11.5px/1.6 var(--mono); color: var(--ink-2);
+    display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between;
+  }
+  table { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
+  th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; padding-bottom: 7px; }
+  td { padding: 7px 0; border-top: 1px solid var(--rule); }
+  td.num { text-align: right; color: var(--ink-2); }
+
   .hidden { display: none; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>resume-agent</h1>
-  <span class="sub" id="profile-line">loading profile…</span>
-  <span class="sub" id="ready-line"></span>
-</header>
+<div class="sheet">
 
-<main>
-  <section>
-    <div class="panel">
-      <h2>Job posting</h2>
-      <textarea id="jd" placeholder="Paste a job description here."></textarea>
-      <div class="row">
-        <button id="run">Run</button>
-        <label class="check"><input type="checkbox" id="judge" checked> grounding judge</label>
-        <label class="check"><input type="checkbox" id="letter" checked> cover letter</label>
-        <label class="check"><input type="checkbox" id="strict"> strict</label>
+  <header>
+    <div class="wordmark"><i aria-hidden="true"></i>resume-agent</div>
+    <div class="facts" id="facts">loading profile…</div>
+    <div class="ready" id="ready"><span class="dot"></span><span id="ready-text">checking…</span></div>
+  </header>
+
+  <div class="hero">
+    <p class="eyebrow">Grounded resume generation</p>
+    <h1>Every line on the page traces back to <em>something you actually did</em>.</h1>
+    <p class="lede">
+      Paste a posting. The agent retrieves from your career knowledge base, rewrites only what it
+      can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
+    </p>
+  </div>
+
+  <main>
+    <section class="panel composer">
+      <h2><label for="jd">The posting</label></h2>
+      <textarea id="jd" placeholder="Paste the full job description here — title, responsibilities, requirements. The more of it the parser gets, the better the must-haves come out."></textarea>
+      <div class="controls">
+        <div class="opts">
+          <label class="check"><input type="checkbox" id="judge" checked> grounding judge</label>
+          <label class="check"><input type="checkbox" id="letter" checked> cover letter</label>
+          <label class="check"><input type="checkbox" id="strict"> strict</label>
+        </div>
+        <button id="run">Tailor my resume</button>
       </div>
-      <div class="warnbox" id="cost-note">
-        A run costs roughly $0.50–1.00 the first time for a given posting, and
-        nothing on a re-run — parses, scores and first-pass rewrites are cached.
-      </div>
-    </div>
+      <p class="note" id="note">
+        Roughly $0.50–1.00 the first time for a given posting, and nothing on a re-run —
+        parses, scores and first-pass rewrites are cached.
+      </p>
+    </section>
 
-    <div class="panel" style="margin-top:20px">
-      <h2>Progress</h2>
-      <div id="log"><div class="t">—</div></div>
-    </div>
-  </section>
+    <section>
+      <h2>Pipeline</h2>
+      <div class="rail" id="rail" aria-label="Pipeline stages"></div>
+      <p class="rail-note" id="rail-note">Sixteen stages. The repair stages only run if they are needed.</p>
+    </section>
 
-  <section>
-    <div class="panel hidden" id="result">
+    <section class="panel hidden" id="log-panel">
+      <h2>Run log</h2>
+      <div id="log" aria-live="polite" aria-label="Run progress"></div>
+    </section>
+
+    <section class="panel hidden" id="result">
       <h2>Result</h2>
-      <div id="stats"></div>
-      <div id="gaps"></div>
-      <div id="dropped"></div>
-      <div id="bullets"></div>
-      <div id="pdf"></div>
-    </div>
+      <div id="result-body"></div>
+    </section>
 
-    <div class="panel hidden" id="letterbox" style="margin-top:20px">
-      <h2>Cover letter</h2>
-      <div id="letter-body"></div>
-    </div>
-  </section>
-</main>
+    <section class="panel hidden" id="letterbox">
+      <h2>Cover letter <span id="letter-count"></span></h2>
+      <div class="letter" id="letter-body"></div>
+    </section>
+
+    <section class="panel hidden" id="apps">
+      <h2>Applications sent</h2>
+      <div id="apps-body"></div>
+    </section>
+  </main>
+
+  <footer>
+    <span>Local only · nothing leaves this machine except the job description and your knowledge base, which go to the Anthropic API.</span>
+    <span>Jake's Resume template · compiled with tectonic</span>
+  </footer>
+
+</div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
+  (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+/* The graph's sixteen nodes, grouped by the phase they belong to. This list
+   mirrors GRAPH_NODES in api/app.py; a renamed node would show up here as a
+   tick that never lights, so `test_the_rail_matches_the_real_graph` checks the
+   two against each other. */
+const PHASES = [
+  { name: "Read",    nodes: ["parse_jd", "retrieve", "score", "select"] },
+  { name: "Write",   nodes: ["tailor", "verify"] },
+  { name: "Typeset", nodes: ["render", "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull"] },
+  { name: "Letter",  nodes: ["cover_letter"] },
+  { name: "Close",   nodes: ["human_review", "revision_cap", "finalize"] },
+];
 
 let source = null;
+
+/* ------------------------------------------------------------------ rail */
+
+function buildRail() {
+  let n = 0;
+  $("rail").innerHTML = PHASES.map((phase) => {
+    const items = phase.nodes.map((node) => {
+      n += 1;
+      const num = String(n).padStart(2, "0");
+      return `<li data-node="${node}" data-state="idle">` +
+             `<span class="tick"></span><span class="num">${num}</span>${node}</li>`;
+    }).join("");
+    return `<div class="phase"><div class="phase-name">${phase.name}</div><ol>${items}</ol></div>`;
+  }).join("");
+}
+
+function resetRail() {
+  $("rail").querySelectorAll("li").forEach((li) => { li.dataset.state = "idle"; });
+  $("rail-note").textContent = "Sixteen stages. The repair stages only run if they are needed.";
+}
+
+function markNode(node, state) {
+  const li = $("rail").querySelector(`li[data-node="${CSS.escape(node)}"]`);
+  if (!li) return;
+  // A node that finished must not be pulled back to "active" by a later loop
+  // pass -- but a repair loop genuinely re-enters it, so active always wins
+  // while the run is live.
+  li.dataset.state = state;
+  if (state === "active") li.setAttribute("aria-current", "step");
+  else li.removeAttribute("aria-current");
+}
+
+function summariseRail() {
+  const all = $("rail").querySelectorAll("li");
+  const ran = $("rail").querySelectorAll('li[data-state="done"]').length;
+  const skipped = all.length - ran;
+  $("rail-note").textContent = skipped
+    ? `${ran} of ${all.length} stages ran — ${skipped} were not needed.`
+    : `All ${all.length} stages ran.`;
+}
+
+/* --------------------------------------------------------------- profile */
 
 async function loadProfile() {
   try {
     const p = await (await fetch("/api/profile")).json();
-    $("profile-line").textContent =
-      `${p.name} — ${p.bullets} bullets, ${p.experience} roles, ${p.projects} projects`;
+    $("facts").innerHTML =
+      `${esc(p.name)} · <b>${p.bullets}</b> bullets · <b>${p.experience}</b> roles · ` +
+      `<b>${p.projects}</b> projects · <b>${p.skills}</b> skills`;
 
-    // Say what will fail BEFORE the button is pressed, rather than after a wait.
+    // Say what will fail BEFORE the button is pressed, rather than after a wait,
+    // and say how to fix it -- a disabled button with no remedy is a dead end.
     const missing = [];
-    if (!p.has_credentials) missing.push("no ANTHROPIC_API_KEY");
-    if (!p.has_compiler) missing.push("no LaTeX compiler");
+    if (!p.has_credentials) missing.push("ANTHROPIC_API_KEY is not set");
+    if (!p.has_compiler) missing.push("no LaTeX compiler on PATH");
+
     if (missing.length) {
-      $("ready-line").innerHTML = `<span class="bad">${esc(missing.join(" · "))}</span>`;
+      $("ready").className = "ready is-blocked";
+      $("ready-text").textContent = missing.length + " blocker" + (missing.length > 1 ? "s" : "");
       $("run").disabled = true;
+      $("note").className = "note blocked";
+      $("note").innerHTML =
+        `<strong>${esc(missing.join(" · "))}.</strong> ` +
+        (p.has_credentials ? "" : "Set the key in the shell you start the server from, then reload. ") +
+        (p.has_compiler ? "" : "Install <code>tectonic</code>, or set <code>RESUME_AGENT_TECTONIC</code> to its path. ") +
+        "Everything else on this page works without either.";
     } else {
-      $("ready-line").textContent = "ready";
+      $("ready").className = "ready is-ready";
+      $("ready-text").textContent = "ready";
     }
-  } catch (e) {
-    $("profile-line").textContent = "could not load profile";
+  } catch {
+    $("facts").textContent = "could not load profile";
+    $("ready").className = "ready is-blocked";
+    $("ready-text").textContent = "server unreachable";
   }
 }
 
+async function loadApplications() {
+  try {
+    const rows = await (await fetch("/api/applications?limit=8")).json();
+    if (!rows.length) return;  // no honest content, so no section
+    $("apps").classList.remove("hidden");
+    $("apps-body").innerHTML =
+      `<table><thead><tr><th>Date</th><th>Company</th><th>Role</th>` +
+      `<th class="num">Fit</th><th class="num">Outcome</th></tr></thead><tbody>` +
+      rows.map((r) => `<tr>` +
+        `<td>${esc(r.applied_on.slice(0, 10))}</td>` +
+        `<td>${esc(r.company)}</td>` +
+        `<td>${esc(r.title)}</td>` +
+        `<td class="num">${r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—"}</td>` +
+        `<td class="num">${esc(r.outcome ?? "—")}</td></tr>`).join("") +
+      `</tbody></table>`;
+  } catch {
+    /* The tracker is a nicety; a failure here must not disturb the run flow. */
+  }
+}
+
+/* ------------------------------------------------------------------- log */
+
 function log(kind, name, detail, elapsed) {
-  const cls = kind === "error" ? "err"
-            : kind === "status" ? "done"
-            : kind.startsWith("model") ? "model" : "";
-  const arrow = kind === "node_start" || kind === "model_start" ? "▶" : "✓";
+  const cls = kind === "error" ? "is-error"
+            : kind === "status" ? "is-status"
+            : kind.startsWith("model") ? "is-model" : "";
+  const mark = kind === "error" ? "!"
+             : kind.endsWith("_start") ? "→" : "✓";
   const row = document.createElement("div");
-  row.className = cls;
+  row.className = "row " + cls;
   row.innerHTML =
     `<span class="t">${elapsed != null ? elapsed.toFixed(1) + "s" : ""}</span>` +
-    `<span class="n">${arrow} ${esc(name)}</span>` +
-    `<span>${esc(detail ?? "")}</span>`;
+    `<span class="mark">${mark}</span>` +
+    `<span class="name">${esc(name)}</span>` +
+    `<span class="detail">${esc(detail ?? "")}</span>`;
   $("log").appendChild(row);
   $("log").scrollTop = $("log").scrollHeight;
 }
 
+/* ---------------------------------------------------------------- result */
+
 function renderResult(r) {
   $("result").classList.remove("hidden");
 
-  const stat = (k, v) => `<div class="stat"><span>${esc(k)}</span><span>${esc(v)}</span></div>`;
-  $("stats").innerHTML =
-    stat("role", `${r.title ?? "?"} at ${r.company ?? "?"}`) +
-    stat("recommendation", r.recommendation ?? "—") +
-    stat("fit", r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—") +
-    stat("pages", r.page_count ?? "—") +
-    stat("line budget", r.line_budget ?? "—") +
-    stat("layout attempts", r.layout_attempts);
+  const pct = (v) => (v != null ? Math.round(v * 100) + "%" : "—");
+  const stat = (k, v, unit) =>
+    `<div class="stat"><div class="k">${esc(k)}</div><div class="v">${esc(v)}` +
+    (unit ? ` <small>${esc(unit)}</small>` : "") + `</div></div>`;
 
-  // Gaps and dropped bullets first: what is missing is the actionable half,
-  // and a dropped bullet means the resume is weaker than it could have been.
-  $("gaps").innerHTML = r.must_have_gaps?.length
-    ? `<h2 style="margin-top:14px">Missing must-haves</h2><ul class="bad">${
-        r.must_have_gaps.map(g => `<li>${esc(g)}</li>`).join("")}</ul>`
-    : "";
+  let html =
+    `<div class="verdict">` +
+      `<span class="role">${esc(r.title ?? "Unknown role")} · ${esc(r.company ?? "unknown")}</span>` +
+      (r.recommendation
+        ? `<span class="badge ${esc(r.recommendation)}">${esc(r.recommendation.replace("_", " "))}</span>`
+        : "") +
+    `</div>` +
+    `<div class="stats">` +
+      stat("fit", pct(r.overall_fit)) +
+      stat("pages", r.page_count ?? "—") +
+      stat("line budget", r.line_budget ?? "—", "lines") +
+      stat("layout tries", r.layout_attempts) +
+      stat("bullets", r.bullets?.length ?? 0) +
+    `</div>`;
 
-  $("dropped").innerHTML = r.dropped_bullets?.length
-    ? `<h2 style="margin-top:14px">Dropped for failing grounding</h2><ul>${
-        r.dropped_bullets.map(b => `<li>${esc(b)}</li>`).join("")}</ul>`
-    : "";
+  // Gaps and dropped bullets come before the good news. What is missing is the
+  // actionable half, and a dropped bullet means the resume that just compiled
+  // is weaker than it could have been.
+  if (r.must_have_gaps?.length) {
+    html += `<div class="block"><h3 class="alarm">Must-haves not covered</h3>` +
+            `<ul class="list alarm">${r.must_have_gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>`;
+  }
+  if (r.dropped_bullets?.length) {
+    html += `<div class="block"><h3 class="alarm">Dropped for failing grounding</h3>` +
+            `<ul class="list alarm">${r.dropped_bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></div>`;
+  }
+  if (r.bullets?.length) {
+    html += `<div class="block"><h3>On the resume</h3>` +
+            `<ul class="list">${r.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></div>`;
+  }
+  if (r.has_pdf) {
+    const url = `/api/runs/${encodeURIComponent(r.run_id)}/pdf`;
+    html += `<div class="block"><h3>The page</h3>` +
+            `<embed src="${url}" type="application/pdf" title="Tailored resume">` +
+            `<a class="dl" href="${url}" download>download resume.pdf</a></div>`;
+  }
+  if (r.errors?.length) {
+    html += `<div class="errors">${r.errors.map(esc).join("<br>")}</div>`;
+  }
 
-  $("bullets").innerHTML = r.bullets?.length
-    ? `<h2 style="margin-top:14px">On the resume</h2><ul>${
-        r.bullets.map(b => `<li>${esc(b)}</li>`).join("")}</ul>`
-    : "";
-
-  $("pdf").innerHTML = r.has_pdf
-    ? `<embed src="/api/runs/${encodeURIComponent(r.run_id)}/pdf" type="application/pdf">
-       <div style="margin-top:6px"><a class="dl" href="/api/runs/${encodeURIComponent(r.run_id)}/pdf" download>download resume.pdf</a></div>`
-    : "";
+  $("result-body").innerHTML = html;
 
   if (r.cover_letter) {
     $("letterbox").classList.remove("hidden");
+    $("letter-count").textContent = `· ${r.cover_letter_words} words`;
     $("letter-body").innerHTML =
-      `<div class="stat"><span>words</span><span>${r.cover_letter_words}</span></div>` +
-      r.cover_letter.split("\n\n").map(p => `<p>${esc(p)}</p>`).join("");
-  }
-
-  if (r.errors?.length) {
-    $("stats").innerHTML += `<div class="warnbox bad">${r.errors.map(esc).join("<br>")}</div>`;
+      r.cover_letter.split("\n\n").map((p) => `<p>${esc(p)}</p>`).join("");
   }
 }
+
+/* ------------------------------------------------------------------- run */
 
 async function start() {
   const jd = $("jd").value.trim();
   if (!jd) { $("jd").focus(); return; }
 
   $("run").disabled = true;
+  $("run").textContent = "Running…";
   $("log").innerHTML = "";
+  $("log-panel").classList.remove("hidden");
   $("result").classList.add("hidden");
   $("letterbox").classList.add("hidden");
+  resetRail();
   if (source) source.close();
 
   const res = await fetch("/api/runs", {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jd,
       use_judge: $("judge").checked,
@@ -225,7 +653,11 @@ async function start() {
       strict: $("strict").checked,
     }),
   });
-  if (!res.ok) { log("error", "failed to start", await res.text()); $("run").disabled = false; return; }
+  if (!res.ok) {
+    log("error", "could not start", await res.text());
+    finish();
+    return;
+  }
 
   const { run_id } = await res.json();
 
@@ -233,17 +665,37 @@ async function start() {
   source.onmessage = (e) => {
     const ev = JSON.parse(e.data);
     log(ev.kind, ev.name, ev.detail, ev.elapsed_s);
+    if (ev.kind === "node_start") markNode(ev.name, "active");
+    if (ev.kind === "node_end") markNode(ev.name, "done");
   };
   source.addEventListener("end", async () => {
     source.close();
-    $("run").disabled = false;
+    summariseRail();
+    finish();
     renderResult(await (await fetch(`/api/runs/${run_id}`)).json());
+    loadApplications();
   });
-  source.onerror = () => { source.close(); $("run").disabled = false; };
+  source.onerror = () => {
+    source.close();
+    log("error", "stream dropped", "the run may still be going; reload to reattach");
+    finish();
+  };
+}
+
+function finish() {
+  $("run").disabled = false;
+  $("run").textContent = "Tailor my resume";
 }
 
 $("run").addEventListener("click", start);
+// Ctrl/Cmd+Enter from the textarea, because that is where the hands already are.
+$("jd").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !$("run").disabled) start();
+});
+
+buildRail();
 loadProfile();
+loadApplications();
 </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -298,11 +299,39 @@ def test_graph_nodes_list_matches_the_real_graph() -> None:
     assert real <= GRAPH_NODES, f"nodes missing from the UI filter: {real - GRAPH_NODES}"
 
 
+def page_source() -> str:
+    return (Path(__file__).resolve().parent.parent
+            / "src" / "resume_agent" / "api" / "static" / "index.html").read_text(encoding="utf-8")
+
+
 def test_the_page_has_no_build_step() -> None:
     """Spec 8 asks for a "minimal frontend"; a bundler in a Python repo is a
     second toolchain to install and explain."""
-    page = (Path(__file__).resolve().parent.parent
-            / "src" / "resume_agent" / "api" / "static" / "index.html")
-    text = page.read_text(encoding="utf-8")
+    text = page_source()
     assert "<script src=" not in text, "the page pulls in an external script"
     assert "import " not in text.split("<script>")[1][:200]
+
+
+def test_the_page_fetches_nothing_off_this_machine() -> None:
+    """`serve` is a localhost tool that has to come up with the network
+    unplugged, so a webfont or a CDN stylesheet is a real failure mode and not
+    just a preference. Only same-origin `/api/...` URLs are allowed."""
+    for attribute in re.findall(r'(?:src|href)="([^"]*)"', page_source()):
+        assert not attribute.startswith(("http://", "https://", "//")), attribute
+
+
+def test_the_rail_matches_the_real_graph() -> None:
+    """The pipeline rail names all sixteen nodes so it can light them up one by
+    one. A renamed node would otherwise become a tick that never lights -- a
+    silent, plausible-looking wrong answer rather than a visible break."""
+    phases = re.search(r"const PHASES = \[(.*?)\n\];", page_source(), re.S)
+    assert phases, "the page no longer declares PHASES"
+
+    on_the_rail = set()
+    for group in re.findall(r"nodes: \[(.*?)\]", phases.group(1), re.S):
+        on_the_rail.update(re.findall(r'"([a-z_]+)"', group))
+
+    assert on_the_rail == GRAPH_NODES, (
+        f"missing from the rail: {GRAPH_NODES - on_the_rail}; "
+        f"not real nodes: {on_the_rail - GRAPH_NODES}"
+    )

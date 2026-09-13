@@ -57,14 +57,28 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 uv run resume-agent serve
 ```
 
-Then open <http://127.0.0.1:8000>. Paste a posting, hit Run, and watch the graph
-work — `parse_jd → retrieve → score → select → tailor → verify → render →
-compile → inspect` streams in live over SSE, with model calls shown so a
-twenty-second tailoring call doesn't look like a hang.
+Then open <http://127.0.0.1:8000>. Paste a posting, press **Tailor my resume**
+(or `Ctrl`/`Cmd`+`Enter` from the textarea), and watch the graph work.
+
+All sixteen nodes are drawn as a pipeline rail, grouped into the five phases
+they belong to — read, write, typeset, letter, close — and each one lights up as
+its events arrive over SSE. Model calls are shown too, so a twenty-second
+tailoring call doesn't look like a hang. When the run ends the rail says how
+many stages actually ran: the repair stages (`fix_latex`, `shrink_budget`,
+`note_overfull`) only fire when they are needed, and a tick that never lit is
+information, not a gap.
+
+Results lead with what is missing — uncovered must-haves and bullets dropped for
+failing grounding — before the bullets that made it, because that is the
+actionable half. The tracker appears underneath once you have sent anything.
 
 The page reports missing credentials or a missing LaTeX compiler **before** you
-press Run rather than after you've waited. It binds to localhost by default: the
-API has no authentication and starting a run spends money.
+press the button rather than after you've waited, and says how to fix each one.
+It binds to localhost by default: the API has no authentication and starting a
+run spends money.
+
+The frontend is one file with no build step, no framework and no network: no
+CDN, no webfonts, nothing fetched off the machine. Two tests hold that line.
 
 ## Setup
 
