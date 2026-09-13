@@ -310,6 +310,33 @@ def test_function_calling_is_what_anthropic_already_did(
     )
 
 
+def test_deepseek_disables_thinking_because_it_refuses_a_forced_tool_choice(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The second live failure, after the response_format one.
+
+        400 "Thinking mode does not support this tool_choice"
+
+    DeepSeek enables thinking by default at "high" effort. Every call here pins
+    the schema as the one callable tool, so the two cannot both be on. Switching
+    thinking off is the trade; see the note in PROVIDERS.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", FAKE_KEY)
+
+    payload = build_chat_model()._get_request_payload([("human", "hi")])
+
+    assert payload["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_anthropic_sends_no_extra_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`extra_body` is an OpenAI-protocol field. Leaking a DeepSeek-shaped
+    workaround into the Anthropic path would be a silent 400 waiting to
+    happen."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+
+    assert resolve_provider().extra_body is None
+
+
 def test_the_method_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
     """Real OpenAI supports `json_schema` and it is stricter there, so the
     choice is configurable rather than welded shut."""

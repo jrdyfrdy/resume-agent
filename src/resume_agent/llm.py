@@ -31,10 +31,11 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.runnables import Runnable
@@ -83,6 +84,9 @@ class Provider:
     structured_output_method: Literal["function_calling", "json_mode", "json_schema"] = (
         "function_calling"
     )
+    # Vendor-specific additions to the request body, passed straight through.
+    # Only meaningful for the OpenAI-protocol client.
+    extra_body: Mapping[str, Any] | None = None
 
 
 PROVIDERS: dict[str, Provider] = {
@@ -120,10 +124,23 @@ PROVIDERS: dict[str, Provider] = {
         generation_model="deepseek-v4-pro",
         judge_model="deepseek-flash",
         base_url="https://api.deepseek.com/v1",
-        # DeepSeek exposes low/high/max thinking effort. Deliberately not wired
-        # up: picking one without measuring would be guessing, and `make eval`
-        # is cheap enough here to answer it properly.
+        # Effort is not wired up here because thinking is switched off entirely
+        # -- see below.
         effort=None,
+        # Thinking mode is on by default at "high" effort, and it refuses a
+        # forced tool choice:
+        #   400 "Thinking mode does not support this tool_choice"
+        # Every call in this project pins the schema as the one callable tool,
+        # so thinking and this pipeline are mutually exclusive as things stand.
+        #
+        # This is a real trade, not a free fix: extraction does not miss the
+        # reasoning, but scoring and tailoring are judgement calls that might.
+        # The alternative -- tool_choice "auto" -- lets the model decline to
+        # call the tool at all, which turns a hard 400 into an occasional
+        # missing parse, and a loud failure beats an intermittent one. Worth
+        # revisiting per-role once `make eval` can show whether it costs
+        # anything measurable.
+        extra_body={"thinking": {"type": "disabled"}},
     ),
     "openrouter": Provider(
         name="openrouter",
@@ -365,6 +382,7 @@ def build_chat_model(
         base_url=provider.base_url,
         api_key=os.environ[provider.key_env_var],
         max_tokens=8000,
+        extra_body=dict(provider.extra_body) if provider.extra_body else None,
         **kwargs,
     )
 
