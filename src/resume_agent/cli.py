@@ -33,7 +33,12 @@ from resume_agent.latex.compile import INSTALL_MESSAGE, compile_tex, find_compil
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
 from resume_agent.latex.inspect import inspect_output
-from resume_agent.llm import CREDENTIALS_MESSAGE, MissingCredentialsError, has_credentials
+from resume_agent.llm import (
+    MissingCredentialsError,
+    credentials_message,
+    has_credentials,
+    resolve_provider,
+)
 from resume_agent.report import render_fit_report
 from resume_agent.tracker.db import bullets_by_outcome, list_applications, set_outcome
 
@@ -256,7 +261,7 @@ def parse_jd(
     try:
         spec, cache_hit = parse_job_description(raw, use_cache=not no_cache)
     except MissingCredentialsError:
-        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        typer.secho(credentials_message(), fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
     except JobDescriptionParseError as exc:
         typer.secho(f"Could not parse {jd}: {exc}", fg=typer.colors.RED, err=True)
@@ -305,11 +310,19 @@ def parse_jd(
 
 @app.command("check-credentials")
 def check_credentials() -> None:
-    """Report whether an Anthropic API key is visible to resume-agent."""
+    """Report which provider is active and whether its key is visible."""
     if has_credentials():
-        typer.secho("ANTHROPIC_API_KEY is set.", fg=typer.colors.GREEN)
+        provider = resolve_provider()
+        # The key itself is never printed or logged anywhere in this project --
+        # only the name of the variable it was read from.
+        typer.secho(f"{provider.key_env_var} is set.", fg=typer.colors.GREEN)
+        typer.echo(f"  provider    {provider.name}")
+        typer.echo(f"  generation  {provider.generation_model}")
+        typer.echo(f"  judge       {provider.judge_model}")
+        if provider.base_url:
+            typer.echo(f"  endpoint    {provider.base_url}")
         return
-    typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.YELLOW, err=True)
+    typer.secho(credentials_message(), fg=typer.colors.YELLOW, err=True)
     raise typer.Exit(ExitCode.NO_CREDENTIALS)
 
 
@@ -343,7 +356,7 @@ def analyze(
     try:
         result = run_analysis(jd, loaded, profile, strict=strict, use_cache=not no_cache)
     except MissingCredentialsError:
-        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        typer.secho(credentials_message(), fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
     except JobDescriptionParseError as exc:
         typer.secho(f"Could not parse {jd}: {exc}", fg=typer.colors.RED, err=True)
@@ -417,7 +430,7 @@ def run(
         graph = build_graph(checkpointer=saver)
         final = graph.invoke(initial_state(raw_jd, profile, options), config)
     except MissingCredentialsError:
-        typer.secho(CREDENTIALS_MESSAGE, fg=typer.colors.RED, err=True)
+        typer.secho(credentials_message(), fg=typer.colors.RED, err=True)
         raise typer.Exit(ExitCode.NO_CREDENTIALS) from None
     finally:
         if connection is not None:
@@ -648,8 +661,8 @@ def serve(
     typer.secho(f"resume-agent UI: http://{host}:{port}", fg=typer.colors.CYAN, bold=True)
     if not has_credentials():
         typer.secho(
-            "  (no ANTHROPIC_API_KEY -- the page will load and the Run button "
-            "will be disabled)",
+            "  (no credentials -- the page will load and the Run button will be "
+            "disabled; run `resume-agent check-credentials` for what to set)",
             fg=typer.colors.YELLOW,
         )
 

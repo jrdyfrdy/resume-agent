@@ -95,6 +95,48 @@ Windows, `~/.cache/resume-agent/fastembed` elsewhere. After that everything is
 offline -- no API key, no per-query cost. Override the location with the
 `RESUME_AGENT_MODEL_CACHE` environment variable.
 
+### Model provider
+
+The project was built and tuned against Claude, and Anthropic is still the
+default, but nothing outside `llm.py` knows that. Set one key and the matching
+provider is selected automatically:
+
+| Provider | Key variable | Generation | Judge |
+|---|---|---|---|
+| `anthropic` *(default)* | `ANTHROPIC_API_KEY` | `claude-opus-5` | `claude-sonnet-5` |
+| `deepseek` | `DEEPSEEK_API_KEY` | `deepseek-v4-pro` | `deepseek-flash` |
+| `openrouter` | `OPENROUTER_API_KEY` | `anthropic/claude-opus-5` | `anthropic/claude-sonnet-5` |
+| `custom` | `RESUME_AGENT_API_KEY` | *(you set it)* | *(you set it)* |
+
+```bash
+resume-agent check-credentials
+```
+
+reports which provider is active, which variable it read, and which two models
+it will use. It prints the *name* of the variable, never its value.
+
+To force a provider when several keys are present, or to change a model:
+
+```bash
+set RESUME_AGENT_PROVIDER=deepseek
+set RESUME_AGENT_GENERATION_MODEL=deepseek-flash
+```
+
+`custom` reaches any OpenAI-compatible endpoint — Together, Groq, a local
+Ollama — with no code change, given `RESUME_AGENT_BASE_URL`,
+`RESUME_AGENT_GENERATION_MODEL` and `RESUME_AGENT_API_KEY`.
+
+**Two things worth knowing before switching.** Every prompt in `prompts/` was
+written against Claude, and every call goes through `with_structured_output`, so
+a different model will parse and rewrite differently. That is a measurable
+question rather than a guess — `make eval` scores a run against the baseline, so
+switch and then go and look.
+
+The part that does *not* degrade is the fabrication gate. Numbers must trace to
+a `metrics` key and technologies must appear in `skills.yaml`, both checked in
+plain Python. A weaker model that overreaches gets more bullets **dropped**,
+loudly. The failure mode is a thinner resume, not a dishonest one.
+
 ### LaTeX compiler
 
 `resume-agent` looks for one of these, in this order (spec §6.4):

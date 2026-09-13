@@ -476,7 +476,7 @@ def test_full_graph_produces_a_compiled_cover_letter(tmp_path: Path) -> None:
     """
     from resume_agent.graph.build import build_graph, initial_state
     from resume_agent.jd_cache import JobSpecCache, jd_cache_key
-    from resume_agent.llm import PARSE_MODEL, prompt_version
+    from resume_agent.llm import model_for, prompt_version
     from tests.test_graph import (
         FakeFixer,
         FakeJudge,
@@ -487,7 +487,7 @@ def test_full_graph_produces_a_compiled_cover_letter(tmp_path: Path) -> None:
 
     raw_jd = "Backend engineer. We need caching and Redis experience. Python required."
     JobSpecCache().put(
-        jd_cache_key(raw_jd, PARSE_MODEL, prompt_version("parse_jd")), make_job()
+        jd_cache_key(raw_jd, model_for(), prompt_version("parse_jd")), make_job()
     )
 
     graph = build_graph(

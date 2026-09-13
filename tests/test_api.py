@@ -132,6 +132,34 @@ def test_profile_summary(client: TestClient) -> None:
     assert "has_compiler" in body
 
 
+def test_profile_summary_names_the_provider_to_configure(monkeypatch, client: TestClient) -> None:
+    """The page tells you which variable to set, so it has to be told which
+    provider is active. Hardcoding ANTHROPIC_API_KEY in the page would send a
+    DeepSeek user to set a variable that changes nothing."""
+    monkeypatch.setenv("RESUME_AGENT_PROVIDER", "deepseek")
+    body = client.get("/api/profile").json()
+
+    assert body["provider"] == "deepseek"
+    assert body["credentials_var"] == "DEEPSEEK_API_KEY"
+
+
+def test_a_bad_provider_name_blocks_the_page_rather_than_500ing(
+    monkeypatch, client: TestClient
+) -> None:
+    monkeypatch.setenv("RESUME_AGENT_PROVIDER", "nonsense")
+    response = client.get("/api/profile")
+
+    assert response.status_code == 200
+    assert response.json()["has_credentials"] is False
+
+
+def test_the_page_hardcodes_no_vendor_key_name() -> None:
+    """The blocked state is rendered from `credentials_var`, so a vendor
+    variable spelled out in the page would be a bug that only shows up for
+    whoever is not using that vendor."""
+    assert "ANTHROPIC_API_KEY" not in page_source()
+
+
 def test_an_unknown_profile_is_a_400_not_a_500(client: TestClient) -> None:
     response = client.get("/api/profile", params={"profile": "does_not_exist"})
     assert response.status_code == 400

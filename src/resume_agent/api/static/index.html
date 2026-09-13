@@ -453,6 +453,11 @@ const PHASES = [
 
 let source = null;
 
+// The note starts as the cost estimate and is replaced by the blocker text when
+// something is missing. Captured so the ready path can put it back rather than
+// leaving a stale "key is not set" message under a working Run button.
+const COST_NOTE = $("note").innerHTML;
+
 /* ------------------------------------------------------------------ rail */
 
 function buildRail() {
@@ -504,8 +509,13 @@ async function loadProfile() {
 
     // Say what will fail BEFORE the button is pressed, rather than after a wait,
     // and say how to fix it -- a disabled button with no remedy is a dead end.
+    // The variable to set depends on the configured provider, so the page asks
+    // the server which one rather than naming a vendor here. Telling a DeepSeek
+    // user to set the Anthropic variable is worse than saying nothing: they
+    // would set it, and it still would not work. A test keeps this file free of
+    // vendor key names entirely.
     const missing = [];
-    if (!p.has_credentials) missing.push("ANTHROPIC_API_KEY is not set");
+    if (!p.has_credentials) missing.push(`${p.credentials_var} is not set`);
     if (!p.has_compiler) missing.push("no LaTeX compiler on PATH");
 
     if (missing.length) {
@@ -515,12 +525,19 @@ async function loadProfile() {
       $("note").className = "note blocked";
       $("note").innerHTML =
         `<strong>${esc(missing.join(" · "))}.</strong> ` +
-        (p.has_credentials ? "" : "Set the key in the shell you start the server from, then reload. ") +
+        (p.has_credentials ? "" : `Set <code>${esc(p.credentials_var)}</code> in the shell you start the server from, then reload. `) +
         (p.has_compiler ? "" : "Install <code>tectonic</code>, or set <code>RESUME_AGENT_TECTONIC</code> to its path. ") +
         "Everything else on this page works without either.";
     } else {
       $("ready").className = "ready is-ready";
-      $("ready-text").textContent = "ready";
+      $("ready-text").textContent = `ready · ${p.provider}`;
+      // Set explicitly rather than left alone. The button starts enabled in the
+      // markup, so today this branch happens to be a no-op -- but a function
+      // that disables in one branch and is silent in the other only works while
+      // it is called exactly once, which is not a property worth relying on.
+      $("run").disabled = false;
+      $("note").className = "note";
+      $("note").innerHTML = COST_NOTE;
     }
   } catch {
     $("facts").textContent = "could not load profile";

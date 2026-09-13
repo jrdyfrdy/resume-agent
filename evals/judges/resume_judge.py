@@ -19,7 +19,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
-from resume_agent.llm import JUDGE_MODEL, build_chat_model, load_prompt
+from resume_agent.llm import build_chat_model, load_prompt
 from resume_agent.models.job import JobSpec
 from resume_agent.models.resume import TailoredBullet
 
@@ -71,7 +71,7 @@ def judge_resume(
     if not tailored:
         return None
 
-    llm = llm or build_chat_model(model=JUDGE_MODEL)
+    llm = llm or build_chat_model("judge")
     structured = llm.with_structured_output(JudgeScores)
 
     requirements = "\n".join(

@@ -21,7 +21,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.jd_cache import JobSpecCache, jd_cache_key
-from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt, prompt_version
+from resume_agent.llm import build_chat_model, load_prompt, model_for, prompt_version
 from resume_agent.models.job import JobSpec, JobSpecFields
 
 PROMPT_NAME = "parse_jd"
@@ -37,7 +37,7 @@ def parse_job_description(
     llm: BaseChatModel | None = None,
     cache: JobSpecCache | None = None,
     use_cache: bool = True,
-    model: str = PARSE_MODEL,
+    model: str | None = None,
 ) -> tuple[JobSpec, bool]:
     """Parse a posting. Returns `(spec, was_cache_hit)`.
 
@@ -47,6 +47,11 @@ def parse_job_description(
     """
     if not raw_jd.strip():
         raise JobDescriptionParseError("job description is empty")
+
+    # Resolved here rather than as a default argument, because the id goes into
+    # the cache key below: a value frozen at import time would let a run on one
+    # provider serve a JobSpec parsed by another straight off disk.
+    model = model or model_for()
 
     cache = cache or JobSpecCache()
     key = jd_cache_key(raw_jd, model, prompt_version(PROMPT_NAME))

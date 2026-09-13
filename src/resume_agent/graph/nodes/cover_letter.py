@@ -39,7 +39,7 @@ from resume_agent.graph.state import AgentState
 from resume_agent.grounding.numbers import unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
 from resume_agent.kb.loader import load_profile
-from resume_agent.llm import JUDGE_MODEL, PARSE_MODEL, build_chat_model, load_prompt
+from resume_agent.llm import build_chat_model, load_prompt
 from resume_agent.models.fit import EvidenceMatch
 from resume_agent.models.job import JobSpec
 from resume_agent.models.letter import (
@@ -147,7 +147,7 @@ def verify_consistency(
         # either -- and inventing a verdict from an empty resume would be worse.
         return LetterVerification.ok()
 
-    llm = llm or build_chat_model(model=JUDGE_MODEL)
+    llm = llm or build_chat_model("judge")
     structured = llm.with_structured_output(ConsistencyVerdict)
 
     rendered = "\n".join(f"- {text}" for text in resume_bullets)
@@ -222,7 +222,7 @@ def draft_cover_letter(state: AgentState, llm: BaseChatModel | None = None) -> d
     profile = load_profile(state["profile_path"])
     job: JobSpec = state["job_spec"]
 
-    llm = llm or build_chat_model(model=PARSE_MODEL)
+    llm = llm or build_chat_model()
     structured = llm.with_structured_output(CoverLetterFields)
 
     narratives = "\n\n".join(f"## {n.name}\n{n.content.strip()}" for n in profile.narratives)

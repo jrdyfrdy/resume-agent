@@ -59,6 +59,12 @@ class ProfileSummary(BaseModel):
     skills: int
     has_credentials: bool
     has_compiler: bool
+    # Which provider is configured, and the variable its key is read from, so
+    # the page can name the right one. Telling a DeepSeek user to set
+    # ANTHROPIC_API_KEY is worse than saying nothing. The key itself never
+    # crosses this boundary -- only the name of the variable.
+    provider: str
+    credentials_var: str
 
 
 class RunSummary(BaseModel):

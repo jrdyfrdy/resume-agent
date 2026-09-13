@@ -27,7 +27,7 @@ from resume_agent.graph.state import AgentState
 from resume_agent.kb.loader import load_profile
 from resume_agent.latex.compile import compile_tex
 from resume_agent.latex.env import render_template
-from resume_agent.llm import JUDGE_MODEL, PARSE_MODEL, prompt_version
+from resume_agent.llm import model_for, prompt_version
 from resume_agent.tracker.db import insert_application
 from resume_agent.tracker.models import ApplicationRow
 
@@ -111,7 +111,7 @@ def finalize(state: AgentState) -> dict:
         "dropped_bullets": state.get("dropped_bullets", []),
         "cover_letter": letter.model_dump() if letter else None,
         "letter_attempts": state.get("letter_attempts", 0),
-        "models": {"generation": PARSE_MODEL, "judge": JUDGE_MODEL},
+        "models": {"generation": model_for(), "judge": model_for("judge")},
         "prompt_versions": {name: prompt_version(name) for name in TRACKED_PROMPTS},
         "profile_git_sha": profile_git_sha(Path(state["profile_path"])),
         "line_budget": state.get("line_budget"),

@@ -29,7 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.grounding.numbers import unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
-from resume_agent.llm import JUDGE_MODEL, build_chat_model, load_prompt
+from resume_agent.llm import build_chat_model, load_prompt
 from resume_agent.models.profile import Bullet
 from resume_agent.models.resume import JudgeVerdict, TailoredBullet, VerificationResult
 
@@ -99,7 +99,7 @@ def verify_with_judge(
     "collaborated with two engineers". Both sentences are numerically and
     technologically clean; only the meaning is wrong.
     """
-    llm = llm or build_chat_model(model=JUDGE_MODEL)
+    llm = llm or build_chat_model("judge")
     structured = llm.with_structured_output(JudgeVerdict)
 
     verdict = structured.invoke(

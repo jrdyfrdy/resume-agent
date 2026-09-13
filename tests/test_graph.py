@@ -213,9 +213,9 @@ def seeded(profile_dir: Path, out_dir: Path, **options: Any) -> AgentState:
     than a test-only backdoor.
     """
     from resume_agent.jd_cache import JobSpecCache, jd_cache_key
-    from resume_agent.llm import PARSE_MODEL, prompt_version
+    from resume_agent.llm import model_for, prompt_version
 
-    JobSpecCache().put(jd_cache_key(RAW_JD, PARSE_MODEL, prompt_version("parse_jd")), make_job())
+    JobSpecCache().put(jd_cache_key(RAW_JD, model_for(), prompt_version("parse_jd")), make_job())
     return initial_state(
         RAW_JD,
         profile_dir,

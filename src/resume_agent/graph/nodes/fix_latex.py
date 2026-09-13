@@ -18,7 +18,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.graph.state import AgentState
 from resume_agent.latex.inspect import first_latex_error
-from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt
+from resume_agent.llm import build_chat_model, load_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ def fix_latex(state: AgentState, llm: BaseChatModel | None = None) -> dict:
         (error or "unknown").splitlines()[0] if error else "unknown",
     )
 
-    llm = llm or build_chat_model(model=PARSE_MODEL)
+    llm = llm or build_chat_model()
 
     # Plain text out, not structured: the deliverable is a whole LaTeX document,
     # and wrapping it in a JSON string field only adds an escaping round-trip

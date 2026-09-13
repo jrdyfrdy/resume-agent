@@ -23,7 +23,7 @@ from pydantic import BaseModel, ConfigDict
 
 from resume_agent.cache import ModelListCache, content_key
 from resume_agent.latex.metrics import CHARS_PER_LINE, estimate_lines
-from resume_agent.llm import PARSE_MODEL, build_chat_model, load_prompt, prompt_version
+from resume_agent.llm import build_chat_model, load_prompt, model_for, prompt_version
 from resume_agent.models.job import JobSpec
 from resume_agent.models.profile import Bullet, Profile
 from resume_agent.models.resume import TailoredBullet, TailoredBulletFields
@@ -93,7 +93,7 @@ def tailor_bullets(
     critiques: dict[str, list[str]] | None = None,
     llm: BaseChatModel | None = None,
     use_cache: bool = True,
-    model: str = PARSE_MODEL,
+    model: str | None = None,
 ) -> list[TailoredBullet]:
     """Rewrite a batch of bullets in one call.
 
@@ -108,6 +108,11 @@ def tailor_bullets(
     """
     if not sources:
         return []
+
+    # Resolved at call time, not as a default argument: the id is part of the
+    # cache key, so freezing it at import would let one provider serve another's
+    # rewrites.
+    model = model or model_for()
 
     critiques = critiques or {}
     cache = ModelListCache(TailoredBullet, "tailored")

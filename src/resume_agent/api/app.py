@@ -48,7 +48,12 @@ from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.loader import ProfileLoadError, load_profile
 from resume_agent.latex.compile import find_compiler
-from resume_agent.llm import has_credentials
+from resume_agent.llm import (
+    PROVIDER_ENV_VAR,
+    ProviderConfigError,
+    has_credentials,
+    resolve_provider,
+)
 from resume_agent.tracker.db import list_applications
 
 logger = logging.getLogger(__name__)
@@ -106,6 +111,14 @@ def create_app(graph_factory=build_graph) -> FastAPI:
         except ProfileLoadError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+        try:
+            provider = resolve_provider()
+            provider_name, credentials_var = provider.name, provider.key_env_var
+        except ProviderConfigError:
+            # A bad RESUME_AGENT_PROVIDER should light up the page's blocked
+            # state pointing at the thing that is actually wrong, not 500.
+            provider_name, credentials_var = "unconfigured", PROVIDER_ENV_VAR
+
         return ProfileSummary(
             name=loaded.identity.name,
             experience=len(loaded.experience),
@@ -116,6 +129,8 @@ def create_app(graph_factory=build_graph) -> FastAPI:
             # rather than after you have waited for it.
             has_credentials=has_credentials(),
             has_compiler=find_compiler() is not None,
+            provider=provider_name,
+            credentials_var=credentials_var,
         )
 
     @app.get("/api/applications", response_model=list[ApplicationSummary])

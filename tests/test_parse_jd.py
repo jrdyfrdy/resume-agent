@@ -33,7 +33,7 @@ SNAPSHOT_DIR = Path(__file__).resolve().parent / "snapshots" / "jd"
 JD_LEVELS = ["junior", "mid", "senior"]
 
 requires_llm = pytest.mark.skipif(
-    not has_credentials(), reason="no ANTHROPIC_API_KEY set -- skipping live model call"
+    not has_credentials(), reason="no model credentials set -- skipping live model call"
 )
 
 

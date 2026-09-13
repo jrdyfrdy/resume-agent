@@ -288,7 +288,8 @@ def main() -> None:
 
     if not args.no_judge and not has_credentials():
         raise SystemExit(
-            "This needs ANTHROPIC_API_KEY. Run with --no-judge for the free "
+            "This needs model credentials (see `resume-agent check-credentials`). "
+            "Run with --no-judge for the free "
             "deterministic checks only (they still need cached runs to check)."
         )
 
