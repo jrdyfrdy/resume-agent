@@ -21,7 +21,13 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.jd_cache import JobSpecCache, jd_cache_key
-from resume_agent.llm import build_chat_model, load_prompt, model_for, prompt_version
+from resume_agent.llm import (
+    build_chat_model,
+    load_prompt,
+    model_for,
+    prompt_version,
+    structured_output,
+)
 from resume_agent.models.job import JobSpec, JobSpecFields
 
 PROMPT_NAME = "parse_jd"
@@ -68,7 +74,7 @@ def parse_job_description(
     # The structured-output schema is JobSpecFields, not JobSpec: `source_hash`
     # is a sha256 and belongs to Python (CLAUDE.md rule 2). A model asked for a
     # hash returns a plausible hex string that is the hash of nothing.
-    structured = llm.with_structured_output(JobSpecFields)
+    structured = structured_output(llm, JobSpecFields)
 
     messages = [
         SystemMessage(content=load_prompt(PROMPT_NAME)),

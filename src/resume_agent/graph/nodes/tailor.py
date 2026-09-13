@@ -23,7 +23,13 @@ from pydantic import BaseModel, ConfigDict
 
 from resume_agent.cache import ModelListCache, content_key
 from resume_agent.latex.metrics import CHARS_PER_LINE, estimate_lines
-from resume_agent.llm import build_chat_model, load_prompt, model_for, prompt_version
+from resume_agent.llm import (
+    build_chat_model,
+    load_prompt,
+    model_for,
+    prompt_version,
+    structured_output,
+)
 from resume_agent.models.job import JobSpec
 from resume_agent.models.profile import Bullet, Profile
 from resume_agent.models.resume import TailoredBullet, TailoredBulletFields
@@ -126,7 +132,7 @@ def tailor_bullets(
             return cached
 
     llm = llm or build_chat_model(model=model)
-    structured = llm.with_structured_output(TailoringResult)
+    structured = structured_output(llm, TailoringResult)
 
     vocabulary = sorted(profile.skill_vocabulary())
     body = "\n\n".join(_render_bullet(s, job, critiques.get(s.id, [])) for s in sources)

@@ -29,7 +29,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from resume_agent.grounding.numbers import unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
-from resume_agent.llm import build_chat_model, load_prompt
+from resume_agent.llm import build_chat_model, load_prompt, structured_output
 from resume_agent.models.profile import Bullet
 from resume_agent.models.resume import JudgeVerdict, TailoredBullet, VerificationResult
 
@@ -100,7 +100,7 @@ def verify_with_judge(
     technologically clean; only the meaning is wrong.
     """
     llm = llm or build_chat_model("judge")
-    structured = llm.with_structured_output(JudgeVerdict)
+    structured = structured_output(llm, JudgeVerdict)
 
     verdict = structured.invoke(
         [

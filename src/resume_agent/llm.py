@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Literal
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables import Runnable
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -68,6 +69,20 @@ class Provider:
     # differently by every vendor, so it lives on the provider rather than
     # being a global constant.
     effort: str | None = None
+    # How `with_structured_output` should get its schema across.
+    #
+    # `function_calling` binds the schema as a tool, which is the one mechanism
+    # essentially every provider implements -- and it is already ChatAnthropic's
+    # own default, so naming it here changes nothing for Claude.
+    #
+    # langchain-openai instead defaults to `json_schema`, which is an OpenAI
+    # feature rather than an OpenAI-protocol one. DeepSeek rejects it outright:
+    #   400 "This response_format type is unavailable now"
+    # Hence an explicit per-provider setting rather than trusting the client's
+    # default. Real OpenAI can opt back into `json_schema` via the env override.
+    structured_output_method: Literal["function_calling", "json_mode", "json_schema"] = (
+        "function_calling"
+    )
 
 
 PROVIDERS: dict[str, Provider] = {
@@ -140,6 +155,9 @@ PROVIDER_ENV_VAR = "RESUME_AGENT_PROVIDER"
 BASE_URL_ENV_VAR = "RESUME_AGENT_BASE_URL"
 GENERATION_MODEL_ENV_VAR = "RESUME_AGENT_GENERATION_MODEL"
 JUDGE_MODEL_ENV_VAR = "RESUME_AGENT_JUDGE_MODEL"
+STRUCTURED_OUTPUT_ENV_VAR = "RESUME_AGENT_STRUCTURED_OUTPUT"
+
+STRUCTURED_OUTPUT_METHODS = ("function_calling", "json_mode", "json_schema")
 
 # Lets one prompt be swapped for another without touching the file on disk.
 # Format: "name=path,name=path". Used by the eval harness to run a variant
@@ -189,6 +207,13 @@ def resolve_provider() -> Provider:
     generation = os.environ.get(GENERATION_MODEL_ENV_VAR, "").strip()
     judge = os.environ.get(JUDGE_MODEL_ENV_VAR, "").strip()
 
+    method = os.environ.get(STRUCTURED_OUTPUT_ENV_VAR, "").strip().lower()
+    if method and method not in STRUCTURED_OUTPUT_METHODS:
+        raise ProviderConfigError(
+            f"{STRUCTURED_OUTPUT_ENV_VAR}={method!r} is not valid. "
+            f"Choose one of: {', '.join(STRUCTURED_OUTPUT_METHODS)}."
+        )
+
     provider = replace(
         provider,
         base_url=base_url or provider.base_url,
@@ -196,6 +221,7 @@ def resolve_provider() -> Provider:
         # A judge model is optional to configure: falling back to the generation
         # model is always correct, just more expensive than it needs to be.
         judge_model=judge or provider.judge_model or generation or provider.generation_model,
+        structured_output_method=method or provider.structured_output_method,  # type: ignore[arg-type]
     )
 
     if not provider.generation_model:
@@ -340,6 +366,26 @@ def build_chat_model(
         api_key=os.environ[provider.key_env_var],
         max_tokens=8000,
         **kwargs,
+    )
+
+
+def structured_output(llm: BaseChatModel, schema: type) -> Runnable:
+    """`llm.with_structured_output(schema)`, with the provider's method.
+
+    Every model call in this project returns a Pydantic object, so this is the
+    single most provider-sensitive line in the codebase and it is worth having
+    in one place rather than seven.
+
+    The failure it exists to prevent is not hypothetical: langchain-openai
+    defaults to `json_schema`, DeepSeek answers
+
+        400 "This response_format type is unavailable now"
+
+    and the traceback lands in `parse_jd`, which looks like a parsing bug rather
+    than a transport setting.
+    """
+    return llm.with_structured_output(
+        schema, method=resolve_provider().structured_output_method
     )
 
 

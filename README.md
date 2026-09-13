@@ -126,6 +126,17 @@ set RESUME_AGENT_GENERATION_MODEL=deepseek-flash
 Ollama — with no code change, given `RESUME_AGENT_BASE_URL`,
 `RESUME_AGENT_GENERATION_MODEL` and `RESUME_AGENT_API_KEY`.
 
+Every call returns a Pydantic object, and the schema is sent as a **tool**
+(`function_calling`) because that is the one mechanism essentially every
+provider implements. `langchain-openai` would otherwise default to
+`json_schema`, which is an OpenAI feature rather than an OpenAI-protocol one —
+DeepSeek answers `400 This response_format type is unavailable now`. Real OpenAI
+supports it and it is stricter there, so:
+
+```bash
+set RESUME_AGENT_STRUCTURED_OUTPUT=json_schema
+```
+
 **Two things worth knowing before switching.** Every prompt in `prompts/` was
 written against Claude, and every call goes through `with_structured_output`, so
 a different model will parse and rewrite differently. That is a measurable

@@ -27,7 +27,13 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
 from resume_agent.cache import ModelListCache, content_key
-from resume_agent.llm import build_chat_model, load_prompt, model_for, prompt_version
+from resume_agent.llm import (
+    build_chat_model,
+    load_prompt,
+    model_for,
+    prompt_version,
+    structured_output,
+)
 from resume_agent.models.fit import (
     COVERED_THRESHOLD,
     PARTIAL_THRESHOLD,
@@ -134,7 +140,7 @@ def score_fit(
             return cached
 
     llm = llm or build_chat_model(model=model)
-    structured = llm.with_structured_output(ScoringResult)
+    structured = structured_output(llm, ScoringResult)
 
     user_content = (
         f"<requirements>\n{_render_requirements(job)}\n</requirements>\n\n"

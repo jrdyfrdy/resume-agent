@@ -24,6 +24,7 @@ from resume_agent.llm import (
     JUDGE_MODEL_ENV_VAR,
     PROVIDER_ENV_VAR,
     PROVIDERS,
+    STRUCTURED_OUTPUT_ENV_VAR,
     MissingCredentialsError,
     ProviderConfigError,
     build_chat_model,
@@ -31,6 +32,7 @@ from resume_agent.llm import (
     has_credentials,
     model_for,
     resolve_provider,
+    structured_output,
 )
 from resume_agent.models.job import JobSpecFields
 from resume_agent.models.letter import ConsistencyVerdict, CoverLetterFields
@@ -39,6 +41,7 @@ FAKE_KEY = "not-a-real-key"
 
 PROVIDER_ENV_VARS = [
     PROVIDER_ENV_VAR,
+    STRUCTURED_OUTPUT_ENV_VAR,
     BASE_URL_ENV_VAR,
     GENERATION_MODEL_ENV_VAR,
     JUDGE_MODEL_ENV_VAR,
@@ -245,6 +248,84 @@ def test_every_schema_converts_for_an_openai_client(
     """
     monkeypatch.setenv("DEEPSEEK_API_KEY", FAKE_KEY)
     assert build_chat_model().with_structured_output(schema) is not None
+
+
+# ===========================================================================
+# How the schema gets across the wire
+# ===========================================================================
+
+
+def bound_kwargs(chain: object) -> dict:
+    """The kwargs `with_structured_output` bound onto the underlying client."""
+    step = chain.steps[0] if hasattr(chain, "steps") else chain
+    return dict(getattr(step, "kwargs", {}))
+
+
+def test_the_deepseek_path_sends_tools_rather_than_a_response_format(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The exact failure this setting exists for.
+
+    langchain-openai defaults to `json_schema`, which is an OpenAI feature
+    rather than an OpenAI-protocol one, and DeepSeek answers
+
+        400 "This response_format type is unavailable now"
+
+    landing the traceback in `parse_jd` -- where it reads as a parsing bug
+    rather than a transport setting.
+    """
+    monkeypatch.setenv("DEEPSEEK_API_KEY", FAKE_KEY)
+
+    kwargs = bound_kwargs(build_chat_model().with_structured_output(
+        JobSpecFields, method=resolve_provider().structured_output_method
+    ))
+
+    assert "response_format" not in kwargs
+    assert [t["function"]["name"] for t in kwargs["tools"]] == ["JobSpecFields"]
+
+
+def test_structured_output_helper_applies_the_provider_method(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nodes call the helper, not `with_structured_output` directly, so the
+    method is chosen in one place rather than seven."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", FAKE_KEY)
+
+    kwargs = bound_kwargs(structured_output(build_chat_model(), JobSpecFields))
+
+    assert "response_format" not in kwargs
+    assert "tools" in kwargs
+
+
+def test_function_calling_is_what_anthropic_already_did(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Naming the method explicitly must not change Claude's behaviour --
+    `function_calling` is ChatAnthropic's own default."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    llm = build_chat_model()
+
+    assert bound_kwargs(structured_output(llm, JobSpecFields)) == bound_kwargs(
+        llm.with_structured_output(JobSpecFields)
+    )
+
+
+def test_the_method_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Real OpenAI supports `json_schema` and it is stricter there, so the
+    choice is configurable rather than welded shut."""
+    monkeypatch.setenv("DEEPSEEK_API_KEY", FAKE_KEY)
+    monkeypatch.setenv(STRUCTURED_OUTPUT_ENV_VAR, "json_schema")
+
+    assert resolve_provider().structured_output_method == "json_schema"
+
+
+def test_an_invalid_method_is_rejected_with_the_valid_ones(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(STRUCTURED_OUTPUT_ENV_VAR, "json-schema")
+
+    with pytest.raises(ProviderConfigError, match="function_calling"):
+        resolve_provider()
 
 
 # ===========================================================================
