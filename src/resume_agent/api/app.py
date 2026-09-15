@@ -200,9 +200,20 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     # -- read-only ---------------------------------------------------------
 
+    # Read once, at startup, rather than per request.
+    #
+    # Serving it from disk meant the page always reflected the working tree
+    # while the routes stayed frozen at process start -- so a server left
+    # running from before a change would hand the browser a new page that
+    # called endpoints it did not have. That showed up as a bare "Not Found"
+    # in the editor, with nothing to suggest the server was the stale part.
+    # Page and API now ship as one vintage: an old process serves its own old
+    # page, which works. `serve --reload` is the way to iterate.
+    page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
-        return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+        return page
 
     @app.get("/api/profile", response_model=ProfileSummary)
     async def profile_summary(profile: str = DEFAULT_PROFILE) -> ProfileSummary:

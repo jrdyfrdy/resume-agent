@@ -222,6 +222,35 @@ def test_the_profile_name_is_only_written_through_its_guard() -> None:
     ), "write to note-profile outside showActiveProfile()"
 
 
+def test_the_page_and_the_api_ship_as_one_vintage() -> None:
+    """Reported as "clicking any file says Not Found".
+
+    `/` used to read index.html from disk on every request, so a server left
+    running from before a change served the *new* page from its *old* process.
+    The page then called an endpoint that did not exist yet and showed a bare
+    404 detail, with nothing to suggest the server was the stale part. Reading
+    the page once at startup makes an old process serve its own old page, which
+    at least works.
+    """
+    source = (
+        Path(__file__).resolve().parent.parent
+        / "src" / "resume_agent" / "api" / "app.py"
+    ).read_text(encoding="utf-8")
+
+    index = source[source.index("async def index()"):source.index("async def profile_summary")]
+    assert "read_text" not in index, "the page is being re-read per request again"
+
+
+def test_a_stale_server_is_explained_rather_than_shown_as_not_found() -> None:
+    """A 404 on an endpoint this page knows about has exactly one likely cause,
+    and the editor should say it instead of relaying FastAPI's `detail`."""
+    script = page_source()
+
+    assert "async function explain(response)" in script
+    assert "running older code" in script
+    assert "(await response.json()).detail);" not in script, "an error site bypasses explain()"
+
+
 def test_a_save_marks_the_editor_clean_before_it_re_reads() -> None:
     """Found by driving the editor, not by reading it.
 

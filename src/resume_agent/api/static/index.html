@@ -1313,6 +1313,23 @@ function isDirty() {
     : JSON.stringify(editor.doc?.data) !== editor.saved;
 }
 
+/* A failed API call should say something the reader can act on. A 404 on an
+   endpoint this page knows about means the server is older than the page --
+   which used to be possible because `/` was read from disk per request, and is
+   worth naming anyway in case it ever happens again through a proxy or a cached
+   tab. */
+async function explain(response) {
+  let detail = "";
+  try { detail = (await response.json()).detail || ""; } catch { /* not JSON */ }
+
+  if (response.status === 404 && new URL(response.url).pathname.startsWith("/api/")) {
+    return `The server does not have ${new URL(response.url).pathname}. ` +
+           `It is probably running older code than this page — restart it ` +
+           `(stop the server and run "resume-agent serve" again).`;
+  }
+  return detail || `${response.status} ${response.statusText}`;
+}
+
 async function loadFileList() {
   try {
     const data = await (await fetch(
@@ -1365,7 +1382,7 @@ async function openFile(path) {
     const query = `profile=${encodeURIComponent(activeProfile)}&path=${encodeURIComponent(path)}`;
     const [form, file] = await Promise.all([
       fetch(`/api/profile/form?${query}`).then(async (r) => {
-        if (!r.ok) throw new Error((await r.json()).detail);
+        if (!r.ok) throw new Error(await explain(r));
         return r.json();
       }),
       fetch(`/api/profile/file?${query}`).then((r) => r.ok ? r.json() : { text: "" }),
@@ -1644,7 +1661,7 @@ async function saveFile() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw new Error((await response.json()).detail);
+    if (!response.ok) throw new Error(await explain(response));
     const result = await response.json();
 
     if (!result.ok) {
@@ -1681,7 +1698,7 @@ async function addEntry(role) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ profile: activeProfile, role, name: name.trim() }),
     });
-    if (!response.ok) throw new Error((await response.json()).detail);
+    if (!response.ok) throw new Error(await explain(response));
     const created = await response.json();
     await loadFileList();
     await openFile(created.path);
@@ -1717,7 +1734,7 @@ async function createProfile() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "profile", source: "profile.example" }),
     });
-    if (!response.ok) throw new Error((await response.json()).detail);
+    if (!response.ok) throw new Error(await explain(response));
     safeSet("resume-agent.profile", "profile");
     await loadProfiles();
     await loadProfileSummary();
