@@ -400,6 +400,64 @@
     font: 12.5px/1.65 var(--mono); tab-size: 2; white-space: pre;
   }
   #editor-text:disabled { opacity: .55; }
+  /* --- form controls ---------------------------------------------------- */
+  .field { margin-bottom: 18px; }
+  .field-label {
+    display: block; font: 600 11px/1 var(--mono); letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
+  }
+  .field-label .req { color: var(--accent); }
+  .field-help { margin: 0 0 7px; font-size: 12.5px; color: var(--ink-3); max-width: 68ch; }
+  .field input[type="text"], .field input[type="month"], .field textarea, .field select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink); font: 13.5px/1.5 var(--sans);
+  }
+  .field textarea { resize: vertical; min-height: 68px; }
+  .field input[type="month"], .field select { width: auto; min-width: 190px; font-family: var(--mono); font-size: 12.5px; }
+
+  .chip-field { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip-x {
+    appearance: none; border: 0; background: none; cursor: pointer;
+    color: var(--ink-3); margin-left: 4px; padding: 0 1px; font-size: 13px; line-height: 1;
+  }
+  .chip-x:hover { color: var(--bad); }
+  .chip-input {
+    flex: 1; min-width: 130px; padding: 6px 9px; border: 1px dashed var(--rule-firm);
+    border-radius: 6px; background: var(--paper); color: var(--ink); font: 12px var(--mono);
+  }
+
+  .kv { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .kv-row { display: flex; gap: 6px; width: 100%; align-items: center; }
+  .kv-key, .kv-value {
+    padding: 7px 9px; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink); font: 12.5px var(--mono);
+  }
+  .kv-key { flex: 2; } .kv-value { flex: 1; }
+
+  .row-x {
+    appearance: none; border: 0; background: none; cursor: pointer; color: var(--ink-3);
+    font-size: 15px; line-height: 1; padding: 2px 6px; border-radius: 4px;
+  }
+  .row-x:hover { color: var(--bad); background: var(--accent-wash); }
+  .row-add {
+    appearance: none; background: none; border: 1px dashed var(--rule-firm);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer;
+    font: 600 11.5px/1 var(--mono); color: var(--ink-2);
+  }
+  .row-add:hover { border-color: var(--accent); color: var(--accent); }
+
+  .objects > .field-label { margin-bottom: 10px; }
+  .object {
+    border: 1px solid var(--rule); border-radius: 6px;
+    padding: 14px 16px 2px; margin: 0 0 12px; background: var(--paper);
+  }
+  .object legend {
+    font: 600 12px/1 var(--mono); color: var(--ink); padding: 0 7px;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .file-list .add-entry { color: var(--accent); }
+
   .ok-note {
     margin: 0 0 10px; padding: 9px 12px; border-left: 2px solid var(--ok);
     background: var(--paper-2); font: 12px/1.6 var(--mono); color: var(--ink-2);
@@ -598,13 +656,22 @@
               <div class="editor-bar">
                 <span class="editor-path" id="editor-path">select a file</span>
                 <span class="editor-state" id="editor-state"></span>
+                <!--
+                  The raw file, for the cases a form cannot reach: an unusual
+                  value, or a file broken badly enough that the form will not
+                  load it. Off by default and deliberately unglamorous — nobody
+                  should need it.
+                -->
+                <label class="check"><input type="checkbox" id="raw-toggle"> Raw file</label>
                 <button class="cta" id="save-file" disabled>Save</button>
               </div>
               <div id="editor-message"></div>
-              <label class="sr-only" for="editor-text">File contents</label>
-              <textarea id="editor-text" spellcheck="false" disabled></textarea>
+              <div id="form-pane"></div>
+              <div id="raw-pane" class="hidden">
+                <label class="sr-only" for="editor-text">File contents</label>
+                <textarea id="editor-text" spellcheck="false" disabled></textarea>
+              </div>
               <p class="note" id="editor-note">
-                Saved text is written exactly as typed — comments and formatting survive.
                 The whole profile is validated before anything is written, so a save that
                 would break it is refused and the file on disk is left untouched.
                 Every save keeps a timestamped backup.
@@ -623,99 +690,115 @@
         <p class="panel-title">Writing your knowledge base</p>
         <p class="panel-lede">
           The agent never invents. It retrieves, selects and rephrases what you write here, so the
-          quality of the resume is capped by the quality of these files.
+          quality of the resume is capped by the quality of what is in this tab's forms.
+          None of what follows is about file formats — the app handles those.
         </p>
 
-        <h3>Where it goes</h3>
+        <h3>Where it lives</h3>
         <p>
-          A folder named <code>profile/</code> at the root of this repository. It is gitignored, so
-          your real career data is never committed. <code>profile.example/</code> is the public
-          fixture the tests run against — leave it alone and copy it as a starting point.
+          In a folder called <code>profile/</code> beside the project. You do not have to create it
+          by hand: the <strong>Profile</strong> tab offers a <strong>Create my profile</strong>
+          button when none exists, which copies the worked example so you start from something
+          complete and edit it into your own.
         </p>
-        <pre><code>cp -r profile.example profile</code></pre>
         <p>
-          Then edit every file to be about you. Reload this page and the Profile tab will show what
-          loaded — if a file has a mistake, it appears there with the error rather than silently
-          disappearing.
+          It is gitignored, so your real career data is never committed. Every save keeps a
+          timestamped backup, and a save that would break the profile is refused before anything
+          is written.
         </p>
 
-        <h3>The layout</h3>
-        <pre><code>profile/
-├── identity.yaml          name, email, phone, location, links
-├── education.yaml         institutions, degrees, dates
-├── skills.yaml            THE allow-list of technologies
-├── certifications.yaml    optional
-├── experience/
-│   └── &lt;one file per job&gt;.yaml
-├── projects/
-│   └── &lt;one file per project&gt;.yaml
-└── narratives/
-    └── &lt;topic&gt;.md         prose for the cover letter</code></pre>
-
-        <h3>Anatomy of a bullet</h3>
-        <p>
-          Bullets are the atoms. Each one is a single achievement, written once, in full, honestly —
-          they are never chunked or split.
-        </p>
-        <pre><code>- id: exp_acme.b1
-  canonical: >
-    Cut p95 checkout latency from 820ms to 50ms across 12 endpoints
-    by repartitioning the events table on user_id.
-  metrics:
-    latency_before_ms: 820
-    latency_after_ms: 50
-    endpoints_touched: 12
-  skills: [PostgreSQL, Python]
-  themes: [backend, performance]
-  confidence: verified
-  evidence: "PR #4192, incident review 2024-03"</code></pre>
-
+        <h3>What you are filling in</h3>
         <table class="fields">
-          <thead><tr><th>Field</th><th>What it does</th></tr></thead>
+          <thead><tr><th>Section</th><th>What it is for</th></tr></thead>
           <tbody>
-            <tr><td>canonical</td><td>The full truthful sentence. Every rewrite must be a rephrasing of this and nothing more.</td></tr>
-            <tr><td>metrics</td><td><strong>The only numbers allowed in a rewrite of this bullet.</strong> A figure that is not here, or derivable from here, is a fabrication and the bullet is dropped.</td></tr>
-            <tr><td>skills</td><td>Technologies involved. Every one must resolve through <code>skills.yaml</code> or the profile refuses to load.</td></tr>
-            <tr><td>themes</td><td>Free-form grouping. Selection allows at most three bullets per theme so the page is not seven variations of one skill.</td></tr>
-            <tr><td>confidence</td><td><code>verified</code>, <code>approximate</code> or <code>claim</code>. The <em>strict</em> toggle excludes <code>claim</code>.</td></tr>
-            <tr><td>evidence</td><td>Where you could prove it. Never printed — it is for you, at interview.</td></tr>
+            <tr><td>Profile</td><td>Your name and contact details, the schools, the certificates. This is what prints at the top of the page.</td></tr>
+            <tr><td>Skills</td><td>Every technology you are allowed to be described as knowing. See below — this one does more work than it looks.</td></tr>
+            <tr><td>Jobs &amp; Projects</td><td>One entry per role or project, each holding its achievements.</td></tr>
+            <tr><td>Narratives</td><td>Plain prose about how you work. Raw material for the cover letter.</td></tr>
           </tbody>
         </table>
 
-        <h3>skills.yaml is an allow-list</h3>
+        <h3>An achievement is the unit that matters</h3>
         <p>
-          Every technology the agent is permitted to name lives here with its aliases. If a rewrite
-          mentions something absent from this file, the grounding gate rejects it. That is what stops
-          a model from quietly upgrading "a queue" into "Kafka".
+          Everything on the finished resume is a rephrasing of one achievement you wrote. They are
+          never split or merged, so write each one whole, in full, and truthfully.
         </p>
-        <pre><code>- canonical: PostgreSQL
-  aliases: [postgres, psql, pgsql]
-  category: data
-  level: expert</code></pre>
-
-        <h3>narratives/ feeds the cover letter</h3>
-        <p>
-          Markdown files of ordinary prose — why you do this work, how you learn, the hardest bug you
-          ever chased. The letter draws voice and specifics from here. The same grounding rules apply,
-          so avoid introducing numbers or technologies that appear nowhere else.
-        </p>
-
-        <h3>How to make the resume fit a posting better</h3>
         <ul>
-          <li><strong>Write more bullets than you need.</strong> Selection is a knapsack over a measured line budget; it can only choose from what exists.</li>
-          <li><strong>Fill in <code>metrics</code>.</strong> A bullet with no numbers can still be selected, but it cannot be made specific, and specific bullets score higher against requirements.</li>
-          <li><strong>Spread your <code>themes</code>.</strong> Three-per-theme is a hard cap. If everything is tagged <code>backend</code>, most of your bullets can never be picked together.</li>
-          <li><strong>Use real technology names</strong> in <code>skills</code> and <code>skills.yaml</code>, matching how postings spell them. That is what retrieval and the ATS keyword pass both look for.</li>
-          <li><strong>Run <em>Tailor</em> and read the gaps first.</strong> Missing must-haves tell you what the resume cannot say — sometimes the answer is a bullet you forgot to write, not a job you cannot do.</li>
+          <li><strong>What you did</strong> — one accomplishment in one or two sentences, as you
+            would say it out loud. Not a job description; a thing that happened.</li>
+          <li><strong>Numbers</strong> — recorded as named values. <em>These are the only figures
+            the agent may use when it rewrites this achievement.</em> A number that is not here,
+            and not derivable from here, counts as invented: the rewrite is rejected, retried, and
+            then dropped with a loud note. That is the rule that makes the output trustworthy.</li>
+          <li><strong>Technologies</strong> — picked from your Skills list. The picker only offers
+            what you have recorded, which is why this can never be wrong.</li>
+          <li><strong>Themes</strong> — your own grouping. At most <strong>three</strong>
+            achievements per theme reach a page, so if everything is tagged
+            <code>backend</code> most of your best work can never be selected together. Spreading
+            themes is the cheapest way to improve a resume.</li>
+          <li><strong>Confidence</strong> — mark anything you could not defend in an interview as
+            a <em>claim</em>, and it is excluded whenever you run with <strong>strict</strong>.</li>
+          <li><strong>Evidence</strong> — where you could prove it. Never printed. It is a note to
+            yourself for the interview.</li>
         </ul>
 
-        <h3>What never happens</h3>
+        <h3>Skills is an allow-list, not a list</h3>
+        <p>
+          If a generated line names a technology that is not in your Skills, it is treated as a
+          fabrication and thrown away. That is what stops a model quietly upgrading
+          &ldquo;a queue&rdquo; into &ldquo;Kafka&rdquo;.
+        </p>
+        <p>
+          Give each skill the spellings a posting might use — <code>k8s</code> for Kubernetes,
+          <code>postgres</code> for PostgreSQL. Those aliases are how a job description gets matched
+          to your experience, so a missing one costs you a match you had earned. Removing a skill
+          that achievements already name will be refused; the form warns you first, with a count.
+        </p>
+
+        <h3>Narratives are for <em>why</em>, not <em>what</em></h3>
+        <p>
+          Plain paragraphs about how you work, what you care about, the hardest thing you have
+          debugged. No formatting to learn — a title and prose. The cover letter draws its voice
+          from here.
+        </p>
+        <p>
+          One rule: <strong>do not introduce numbers or technologies that appear nowhere else in
+          your knowledge base.</strong> The letter is checked by the same gate as the resume, so a
+          narrative mentioning a framework you never recorded produces letters that fail
+          verification until the agent gives up and writes none at all. Keep them qualitative —
+          the facts live in the achievements.
+        </p>
+
+        <h3>Making a resume fit a posting better</h3>
         <ul>
-          <li>No number appears that is not in that bullet's <code>metrics</code> or its canonical text.</li>
-          <li>No technology appears that is not in <code>skills.yaml</code>.</li>
-          <li>Anything that fails those checks twice is <strong>dropped and logged</strong>, never quietly kept.</li>
-          <li>Page geometry is never touched. The agent shortens content; it does not shrink margins.</li>
+          <li><strong>Write more achievements than fit.</strong> Selection is a knapsack over a
+            measured line budget; it can only choose from what exists.</li>
+          <li><strong>Record the numbers.</strong> An achievement with none can still be picked,
+            but it cannot be made specific, and specific lines score higher against requirements.</li>
+          <li><strong>Spread the themes</strong>, for the three-per-theme reason above.</li>
+          <li><strong>Use the names postings use.</strong> Aliases are what retrieval and the
+            keyword pass both read.</li>
+          <li><strong>Run <em>Tailor</em> and read the gaps first.</strong> A missing must-have is
+            sometimes an achievement you forgot to write down, not a job you cannot do.</li>
         </ul>
+
+        <h3>What the app will not do</h3>
+        <ul>
+          <li>Print a number that is not in that achievement's recorded numbers.</li>
+          <li>Name a technology that is not in your Skills.</li>
+          <li>Keep anything that fails those checks twice — it is <strong>dropped and logged</strong>,
+            never quietly kept.</li>
+          <li>Touch the page geometry. It shortens what it writes; it does not shrink your margins
+            to make more fit.</li>
+        </ul>
+
+        <h3>If you would rather edit the files</h3>
+        <p>
+          Everything above is stored as YAML and Markdown in <code>profile/</code>, and the
+          <strong>Raw file</strong> switch in the editor shows the file behind the form. You never
+          need it — but a file edited by hand keeps its comments and formatting, and the forms
+          leave them alone too.
+        </p>
       </section>
     </main>
   </div>
@@ -1217,10 +1300,17 @@ function announce(node) {
 
 /* -------------------------------------------------------------- editor */
 
-const editor = { path: null, saved: "", files: [] };
+const editor = { path: null, doc: null, saved: "", files: [], raw: false };
 
+/* The form writes straight into `editor.doc.data`, and dirtiness is a
+   comparison of that against the snapshot taken when the file was opened. No
+   separate "collect the values out of the DOM" pass, which is where form
+   editors usually grow bugs. */
 function isDirty() {
-  return editor.path !== null && $("editor-text").value !== editor.saved;
+  if (!editor.path) return false;
+  return editor.raw
+    ? $("editor-text").value !== editor.saved
+    : JSON.stringify(editor.doc?.data) !== editor.saved;
 }
 
 async function loadFileList() {
@@ -1241,18 +1331,30 @@ async function loadFileList() {
     (groups[dir] ??= []).push(file);
   }
 
+  const label = { "": "Profile", experience: "Jobs", projects: "Projects", narratives: "Narratives" };
   $("file-list").innerHTML = Object.entries(groups)
     .filter(([, files]) => files.length)
     .map(([dir, files]) =>
-      `<div class="group">${esc(dir || "profile")}</div>` +
+      `<div class="group">${esc(label[dir] ?? dir)}</div>` +
       files.map((f) =>
         `<button type="button" data-file="${esc(f)}" aria-current="${f === editor.path}">` +
-        `${esc(f.includes("/") ? f.slice(f.indexOf("/") + 1) : f)}</button>`).join(""))
-    .join("");
+        `${esc(prettyName(f))}</button>`).join(""))
+    .join("") +
+    `<div class="group">Add</div>
+     <button type="button" class="add-entry" data-role="experience">+ Job</button>
+     <button type="button" class="add-entry" data-role="project">+ Project</button>`;
 
-  $("file-list").querySelectorAll("button").forEach((button) => {
+  $("file-list").querySelectorAll("button[data-file]").forEach((button) => {
     button.addEventListener("click", () => openFile(button.dataset.file));
   });
+  $("file-list").querySelectorAll("button.add-entry").forEach((button) => {
+    button.addEventListener("click", () => addEntry(button.dataset.role));
+  });
+}
+
+function prettyName(path) {
+  const base = path.includes("/") ? path.slice(path.indexOf("/") + 1) : path;
+  return base.replace(/\.(yaml|md)$/, "").replace(/[_-]/g, " ");
 }
 
 async function openFile(path) {
@@ -1260,17 +1362,22 @@ async function openFile(path) {
 
   setEditorMessage("");
   try {
-    const response = await fetch(
-      `/api/profile/file?profile=${encodeURIComponent(activeProfile)}` +
-      `&path=${encodeURIComponent(path)}`);
-    if (!response.ok) throw new Error((await response.json()).detail);
-    const file = await response.json();
+    const query = `profile=${encodeURIComponent(activeProfile)}&path=${encodeURIComponent(path)}`;
+    const [form, file] = await Promise.all([
+      fetch(`/api/profile/form?${query}`).then(async (r) => {
+        if (!r.ok) throw new Error((await r.json()).detail);
+        return r.json();
+      }),
+      fetch(`/api/profile/file?${query}`).then((r) => r.ok ? r.json() : { text: "" }),
+    ]);
 
     editor.path = path;
-    editor.saved = file.text;
+    editor.doc = form;
+    editor.saved = editor.raw ? file.text : JSON.stringify(form.data);
     $("editor-text").value = file.text;
     $("editor-text").disabled = false;
     $("editor-path").textContent = path;
+    renderForm();
     loadFileList();
     refreshEditorState();
   } catch (e) {
@@ -1278,14 +1385,241 @@ async function openFile(path) {
   }
 }
 
+/* ------------------------------------------------------------ rendering */
+
+function renderForm() {
+  if (!editor.doc) { $("form-pane").innerHTML = ""; return; }
+  const { spec, data } = editor.doc;
+  $("form-pane").innerHTML = spec.map((f) => control(f, data[f.name], [f.name])).join("");
+  wireForm();
+}
+
+/* A control writes into `editor.doc.data` at `path`, so every input carries the
+   route to its own value. Paths are joined with a character that cannot appear
+   in a field name. */
+const SEP = "";
+
+function at(path) {
+  let node = editor.doc.data;
+  for (const step of path.slice(0, -1)) node = node[step];
+  return [node, path[path.length - 1]];
+}
+
+function setValue(path, value) {
+  const [node, key] = at(path);
+  node[key] = value;
+  refreshEditorState();
+}
+
+function control(f, value, path) {
+  const id = "f" + path.join("-").replace(/[^\w-]/g, "_");
+  const route = esc(path.join(SEP));
+  const help = f.help ? `<p class="field-help">${esc(f.help)}</p>` : "";
+  const label = `<label class="field-label" for="${id}">${esc(f.label)}` +
+    (f.required ? ` <span class="req" title="required">*</span>` : "") + `</label>`;
+
+  if (f.kind === "objects") return objectList(f, value || [], path);
+
+  let input;
+  if (f.kind === "textarea") {
+    input = `<textarea id="${id}" data-route="${route}" rows="3" ` +
+            `placeholder="${esc(f.placeholder)}">${esc(value ?? "")}</textarea>`;
+  } else if (f.kind === "select") {
+    input = `<select id="${id}" data-route="${route}">` +
+      f.choices.map((c) =>
+        `<option value="${esc(c)}"${String(value ?? "") === c ? " selected" : ""}>` +
+        `${esc(c || "—")}</option>`).join("") + `</select>`;
+  } else if (f.kind === "month") {
+    input = `<input id="${id}" data-route="${route}" type="month" value="${esc(value ?? "")}">`;
+  } else if (f.kind === "chips") {
+    return `<div class="field">${label}${help}${chips(f, value || [], path, id)}</div>`;
+  } else if (f.kind === "keyvalue") {
+    return `<div class="field">${label}${help}${keyvalue(value || {}, path)}</div>`;
+  } else {
+    input = `<input id="${id}" data-route="${route}" type="text" ` +
+            `value="${esc(value ?? "")}" placeholder="${esc(f.placeholder)}">`;
+  }
+  return `<div class="field">${label}${help}${input}</div>`;
+}
+
+function chips(f, values, path, id) {
+  const list = `sug-${f.suggest ?? "none"}`;
+  return `<div class="chip-field" data-route="${esc(path.join(SEP))}" data-suggest="${esc(f.suggest ?? "")}">
+    <div class="chip-row">${values.map((v, i) =>
+      `<span class="chip">${esc(v)}<button type="button" class="chip-x" data-i="${i}" ` +
+      `aria-label="Remove ${esc(v)}">&times;</button></span>`).join("")}</div>
+    <input id="${id}" class="chip-input" list="${list}" placeholder="add…">
+  </div>`;
+}
+
+function keyvalue(pairs, path) {
+  const rows = Object.entries(pairs).map(([k, v], i) => `
+    <div class="kv-row" data-i="${i}">
+      <input class="kv-key" value="${esc(k)}" placeholder="name" aria-label="Name">
+      <input class="kv-value" value="${esc(v)}" placeholder="value" aria-label="Value">
+      <button type="button" class="row-x" aria-label="Remove ${esc(k)}">&times;</button>
+    </div>`).join("");
+  return `<div class="kv" data-route="${esc(path.join(SEP))}">${rows}
+    <button type="button" class="row-add">+ Add a number</button></div>`;
+}
+
+function objectList(f, rows, path) {
+  const body = rows.map((row, i) => {
+    const title = row[f.key] ?? `${f.label} ${i + 1}`;
+    return `<fieldset class="object">
+      <legend>${esc(String(title))}
+        <button type="button" class="row-x" data-route="${esc(path.join(SEP))}" data-i="${i}"
+          aria-label="Remove ${esc(String(title))}">&times;</button>
+      </legend>
+      ${f.fields.map((sub) => control(sub, row[sub.name], [...path, i, sub.name])).join("")}
+    </fieldset>`;
+  }).join("");
+  return `<div class="field objects">
+    <div class="field-label">${esc(f.label)}</div>
+    ${body || `<p class="empty">Nothing here yet.</p>`}
+    <button type="button" class="row-add" data-route="${esc(path.join(SEP))}"
+      data-add="${esc(f.name)}">+ Add ${esc(f.label.replace(/s$/, "").toLowerCase())}</button>
+  </div>`;
+}
+
+/* --------------------------------------------------------------- wiring */
+
+function wireForm() {
+  const pane = $("form-pane");
+
+  pane.querySelectorAll("[data-route]").forEach((el) => {
+    if (!el.matches("input[type=text], input[type=month], textarea, select")) return;
+    el.addEventListener("input", () => setValue(el.dataset.route.split(SEP), el.value));
+  });
+
+  pane.querySelectorAll(".chip-field").forEach((field) => {
+    const path = field.dataset.route.split(SEP);
+    const add = (raw) => {
+      const value = raw.trim();
+      if (!value) return;
+      const [node, key] = at(path);
+      if (!node[key].includes(value)) node[key] = [...node[key], value];
+      renderForm();
+      refreshEditorState();
+    };
+    field.querySelector(".chip-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === ",") { e.preventDefault(); add(e.target.value); e.target.value = ""; }
+    });
+    field.querySelector(".chip-input").addEventListener("change", (e) => {
+      add(e.target.value); e.target.value = "";
+    });
+    field.querySelectorAll(".chip-x").forEach((button) => {
+      button.addEventListener("click", () => {
+        const [node, key] = at(path);
+        node[key] = node[key].filter((_, i) => i !== Number(button.dataset.i));
+        renderForm();
+        refreshEditorState();
+      });
+    });
+  });
+
+  pane.querySelectorAll(".kv").forEach((field) => {
+    const path = field.dataset.route.split(SEP);
+    const collect = () => {
+      const pairs = {};
+      field.querySelectorAll(".kv-row").forEach((row) => {
+        const k = row.querySelector(".kv-key").value.trim();
+        if (k) pairs[k] = row.querySelector(".kv-value").value;
+      });
+      setValue(path, pairs);
+    };
+    field.querySelectorAll("input").forEach((el) => el.addEventListener("input", collect));
+    field.querySelectorAll(".row-x").forEach((button) => {
+      button.addEventListener("click", () => { button.closest(".kv-row").remove(); collect(); });
+    });
+    field.querySelector(".row-add").addEventListener("click", () => {
+      const [node, key] = at(path);
+      node[key] = { ...node[key], "": "" };
+      renderForm();
+    });
+  });
+
+  pane.querySelectorAll(".objects > .row-add").forEach((button) => {
+    button.addEventListener("click", () => addRow(button.dataset.route.split(SEP)));
+  });
+  pane.querySelectorAll("legend .row-x").forEach((button) => {
+    button.addEventListener("click", () => removeRow(button.dataset.route.split(SEP), Number(button.dataset.i)));
+  });
+
+  // Datalists for every open suggestion list, built once per render.
+  const lists = Object.entries(editor.doc.suggestions || {}).map(([name, values]) =>
+    `<datalist id="sug-${esc(name)}">` +
+    values.map((v) => `<option value="${esc(v)}">`).join("") + `</datalist>`).join("");
+  pane.insertAdjacentHTML("beforeend", lists);
+}
+
+function specAt(path) {
+  let fields = editor.doc.spec;
+  let found = null;
+  for (const step of path) {
+    if (typeof step === "number") continue;
+    found = fields.find((f) => f.name === step);
+    if (!found) return null;
+    fields = found.fields || [];
+  }
+  return found;
+}
+
+function addRow(path) {
+  const f = specAt(path);
+  const [node, key] = at(path);
+  const row = {};
+  for (const sub of f.fields) {
+    row[sub.name] = sub.kind === "chips" ? [] : sub.kind === "keyvalue" ? {} : "";
+  }
+  // Bullets are the one row type with a generated id: the profile refuses to
+  // load unless it is namespaced under its entry, so it is never typed.
+  if (f.key === "id" && editor.doc.data.id) {
+    row.id = nextBulletId(editor.doc.data.id, (node[key] || []).map((b) => b.id));
+    row.confidence = "verified";
+  }
+  node[key] = [...(node[key] || []), row];
+  renderForm();
+  refreshEditorState();
+}
+
+function nextBulletId(entryId, existing) {
+  const used = new Set(existing);
+  let n = 1;
+  while (used.has(`${entryId}.b${n}`)) n += 1;
+  return `${entryId}.b${n}`;
+}
+
+function removeRow(path, index) {
+  const f = specAt(path);
+  const [node, key] = at(path);
+  const row = (node[key] || [])[index];
+  const name = row?.[f.key] ?? "this";
+
+  // Removing a skill can invalidate files the user never opened. The save would
+  // be refused anyway, but that costs them the edit, so warn while it is cheap.
+  const uses = f.key === "canonical" ? (editor.doc.skill_usage?.[name] ?? 0) : 0;
+  const warning = uses
+    ? `${name} is named by ${uses} bullet${uses > 1 ? "s" : ""} elsewhere. ` +
+      `Removing it will make those files invalid. Remove anyway?`
+    : `Remove ${name}?`;
+  if (!confirm(warning)) return;
+
+  node[key] = node[key].filter((_, i) => i !== index);
+  renderForm();
+  refreshEditorState();
+}
+
+/* ---------------------------------------------------------------- state */
+
 function refreshEditorState() {
   const dirty = isDirty();
   $("save-file").disabled = !dirty;
   $("editor-state").className = "editor-state" + (dirty ? " dirty" : "");
   $("editor-state").textContent = editor.path ? (dirty ? "unsaved changes" : "") : "";
-  const current = $("file-list").querySelector(`button[data-file="${CSS.escape(editor.path ?? "")}"]`);
-  $("file-list").querySelectorAll("button").forEach((b) => b.classList.remove("dirty"));
-  if (dirty && current) current.classList.add("dirty");
+  $("file-list").querySelectorAll("button[data-file]").forEach((b) => {
+    b.classList.toggle("dirty", dirty && b.dataset.file === editor.path);
+  });
 }
 
 function setEditorMessage(text, ok) {
@@ -1299,33 +1633,69 @@ async function saveFile() {
   $("save-file").disabled = true;
   setEditorMessage("");
 
-  const text = $("editor-text").value;
+  const raw = editor.raw;
+  const body = raw
+    ? { profile: activeProfile, path: editor.path, text: $("editor-text").value }
+    : { profile: activeProfile, path: editor.path, data: editor.doc.data };
+
   try {
-    const response = await fetch("/api/profile/file", {
+    const response = await fetch(raw ? "/api/profile/file" : "/api/profile/form", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: activeProfile, path: editor.path, text }),
+      body: JSON.stringify(body),
     });
     if (!response.ok) throw new Error((await response.json()).detail);
     const result = await response.json();
 
     if (!result.ok) {
-      // Invalid YAML is an ordinary outcome of editing, not a crash. The file
-      // on disk is unchanged, so the editor keeps the text and shows why.
+      // Content that does not validate is an ordinary outcome, not a crash. The
+      // file on disk is unchanged, so the editor keeps what was typed.
       setEditorMessage(result.error, false);
       refreshEditorState();
       return;
     }
 
-    editor.saved = text;
-    setEditorMessage(`Saved. Previous version kept at ${result.backup}`, true);
+    // Mark clean *before* re-reading. `openFile` guards against discarding
+    // unsaved work, and without this the save's own refresh trips that guard:
+    // the re-read is skipped, `editor.saved` stays stale, and every later file
+    // switch asks "discard unsaved changes?" about a file already on disk.
+    editor.saved = raw ? $("editor-text").value : JSON.stringify(editor.doc.data);
     refreshEditorState();
-    // The profile changed, so everything derived from it is stale.
+
+    await openFile(editor.path);       // re-read: the file is the source of truth
+    // After the re-read, which clears the message pane on its way in.
+    setEditorMessage(`Saved. Previous version kept at ${result.backup}`, true);
     await Promise.all([loadProfiles(), loadProfileSummary()]);
   } catch (e) {
     setEditorMessage(e.message, false);
     refreshEditorState();
   }
+}
+
+async function addEntry(role) {
+  const name = prompt(role === "experience" ? "Employer name?" : "Project name?");
+  if (!name || !name.trim()) return;
+  try {
+    const response = await fetch("/api/profile/entry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, role, name: name.trim() }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail);
+    const created = await response.json();
+    await loadFileList();
+    await openFile(created.path);
+    await loadProfiles();
+  } catch (e) {
+    setEditorMessage(e.message, false);
+  }
+}
+
+function setRawMode(on) {
+  editor.raw = on;
+  $("form-pane").classList.toggle("hidden", on);
+  $("raw-pane").classList.toggle("hidden", !on);
+  if (editor.path) openFile(editor.path);
 }
 
 function setProfileMode(mode) {
@@ -1373,6 +1743,7 @@ $("profile-select").addEventListener("change", async (e) => {
 
 $("editor-text").addEventListener("input", refreshEditorState);
 $("save-file").addEventListener("click", saveFile);
+$("raw-toggle").addEventListener("change", (e) => setRawMode(e.target.checked));
 $("profile-modes").querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => setProfileMode(button.dataset.mode));
 });

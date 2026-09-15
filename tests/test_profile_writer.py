@@ -92,14 +92,15 @@ def test_the_file_list_is_in_load_order(profile: Path) -> None:
 # ===========================================================================
 
 
-def test_a_save_preserves_comments_and_formatting(profile: Path) -> None:
-    """The whole design rests on this.
+def test_the_writer_moves_text_verbatim(profile: Path) -> None:
+    """The writer's own contract: what goes in is what lands on disk.
 
-    `yaml.safe_dump` would strip the header comment, reflow the `>-` folded
-    scalars into quoted lines, expand `tech: [python, ...]` one-per-line and
-    sort the keys. Those comments are the user's own notes on their own career
-    data, and `profile/` is gitignored -- there is no undo. Round-tripping text
-    is what makes a save non-destructive.
+    Read this narrowly. It exercises `write_profile_file`, which moves text and
+    never parses it -- so it would stay green even if a serializer above it
+    destroyed every comment in the file. The form editor *is* such a
+    serializer; the test that actually protects comments through that path is
+    `test_opening_and_saving_without_editing_changes_nothing` in
+    tests/test_profile_forms.py.
     """
     before = read_profile_file(profile, AN_ENTRY)
     assert "# Employer name carries both an ampersand" in before

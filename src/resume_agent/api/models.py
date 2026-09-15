@@ -194,6 +194,51 @@ class SaveResult(BaseModel):
     backup: str | None = None
 
 
+class FormDocument(BaseModel):
+    """One file, as a form: what controls to draw, the values, what to suggest.
+
+    `spec` and `suggestions` are loose on purpose. The field table in
+    `kb/forms.py` is the single source of truth for both, and mirroring its
+    shape into a Pydantic model here would mean editing two files to add a
+    control.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str
+    role: str
+    kind: str
+    spec: list[dict[str, Any]] = Field(default_factory=list)
+    data: dict[str, Any] = Field(default_factory=dict)
+    suggestions: dict[str, list[str]] = Field(default_factory=dict)
+    # How many bullets and entries name each skill, so the skills form can warn
+    # before removing a row that other files depend on.
+    skill_usage: dict[str, int] = Field(default_factory=dict)
+
+
+class SaveFormRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    path: str
+    data: dict[str, Any]
+
+
+class CreateEntryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    role: Literal["experience", "project"]
+    name: str = Field(min_length=1, max_length=200)
+
+
+class DeleteFileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    path: str
+
+
 class CreateProfileRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

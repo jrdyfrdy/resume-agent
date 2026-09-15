@@ -176,11 +176,28 @@ def test_the_tabs_are_a_real_tablist() -> None:
 
 def test_the_guide_says_where_the_knowledge_base_goes() -> None:
     """The question this tab exists to answer. `profile/` is gitignored and is
-    not created by anything, so nothing else on disk tells you."""
+    not created by anything, so nothing else on disk tells you.
+
+    No longer asserts a `cp -r` command: the Guide points at the in-app Create
+    button now, because a user who never has to know the file format should not
+    be handed a shell command as step one.
+    """
     text = page_source()
 
-    assert "cp -r profile.example profile" in text
+    assert "Create my profile" in text
     assert "gitignored" in text
+
+
+def test_the_guide_stopped_teaching_yaml() -> None:
+    """The forms own the file format, so the Guide's job changed: it explains
+    what an achievement is and why Skills is an allow-list, not how to indent a
+    block scalar. A YAML sample here would be describing a UI that no longer
+    exists."""
+    guide = page_source().split('id="panel-guide"')[1].split("</div>")[0]
+
+    assert "canonical:" not in guide
+    assert "skills.yaml" not in guide
+    assert "allow-list" in guide
 
 
 def test_the_run_request_carries_the_chosen_profile() -> None:
@@ -203,6 +220,33 @@ def test_the_profile_name_is_only_written_through_its_guard() -> None:
     assert '$("note-profile").textContent =' not in text.replace(
         'const el = $("note-profile");', ""
     ), "write to note-profile outside showActiveProfile()"
+
+
+def test_a_save_marks_the_editor_clean_before_it_re_reads() -> None:
+    """Found by driving the editor, not by reading it.
+
+    `saveFile` re-reads the file afterwards because the file is the source of
+    truth. But `openFile` guards against discarding unsaved work, and while
+    `editor.saved` still held the pre-save snapshot that guard tripped on the
+    save's own refresh: the re-read was skipped, the editor stayed permanently
+    dirty, and every later file switch asked "discard unsaved changes?" about a
+    file already written to disk.
+    """
+    script = page_source()
+    save = script[script.index("async function saveFile()"):script.index("async function addEntry")]
+
+    assert "editor.saved =" in save
+    assert save.index("editor.saved =") < save.index("await openFile(editor.path)")
+
+
+def test_the_form_never_shows_a_raw_key_name() -> None:
+    """The point of the whole change: the labels are English, not YAML keys."""
+    script = page_source()
+
+    assert "Raw file" in script, "the escape hatch is gone"
+    # The spec comes from the server, so the page must not hardcode field names
+    # as labels anywhere in the renderer.
+    assert 'f.label' in script and 'esc(f.label)' in script
 
 
 def test_every_class_the_page_uses_is_defined() -> None:
@@ -397,6 +441,86 @@ def test_invalid_content_is_a_result_not_an_error_status(client: TestClient) -> 
     assert body["ok"] is False and body["backup"] is None
     assert "not valid YAML" in body["error"]
     assert (Path("profile.example") / "identity.yaml").read_bytes() == before
+
+
+def test_the_form_endpoint_returns_controls_values_and_suggestions(client: TestClient) -> None:
+    """Everything the page needs to draw one file, in one request."""
+    body = client.get(
+        "/api/profile/form", params={"path": "experience/halvorsen_bright.yaml"}
+    ).json()
+
+    assert body["role"] == "experience" and body["kind"] == "entry"
+    assert {f["name"] for f in body["spec"]} >= {"org", "title", "start", "bullets"}
+    assert len(body["data"]["bullets"]) == 4
+    assert "Kubernetes" in body["suggestions"]["skills"]
+    # What the skills form warns with before removing a row.
+    assert body["skill_usage"]["Kubernetes"] > 0
+
+
+def test_the_form_never_offers_an_id_field(client: TestClient) -> None:
+    """Renaming an entry id cascades to every bullet id and orphans the ids
+    already recorded in the tracker. The form carries ids; it does not offer
+    them."""
+    body = client.get(
+        "/api/profile/form", params={"path": "experience/halvorsen_bright.yaml"}
+    ).json()
+
+    names = {f["name"] for f in body["spec"]}
+    bullets = next(f for f in body["spec"] if f["name"] == "bullets")
+    assert "id" not in names and "type" not in names
+    assert "id" not in {f["name"] for f in bullets["fields"]}
+    # ...but the value is still carried, so a save preserves it.
+    assert body["data"]["id"] == "exp_halvorsen_bright"
+
+
+def test_a_narrative_form_is_a_title_and_prose(client: TestClient) -> None:
+    body = client.get("/api/profile/form", params={"path": "narratives/values.md"}).json()
+
+    assert body["kind"] == "prose"
+    assert {f["name"] for f in body["spec"]} == {"title", "body"}
+
+
+def test_a_file_no_form_understands_is_a_400(client: TestClient) -> None:
+    assert client.get(
+        "/api/profile/form", params={"path": "../pyproject.toml"}
+    ).status_code == 400
+
+
+def test_a_form_save_that_breaks_the_profile_is_refused(client: TestClient) -> None:
+    """Same contract as the text editor, and asserted against `profile.example`
+    on purpose: a refused save must not touch disk, and this is the file the
+    golden snapshot renders from."""
+    path = "experience/halvorsen_bright.yaml"
+    before = (Path("profile.example") / "experience" / "halvorsen_bright.yaml").read_bytes()
+
+    document = client.get("/api/profile/form", params={"path": path}).json()
+    document["data"]["bullets"][0]["skills"] = ["not-a-real-skill"]
+
+    response = client.put(
+        "/api/profile/form",
+        json={"profile": "profile.example", "path": path, "data": document["data"]},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False and "not-a-real-skill" in body["error"]
+    assert (Path("profile.example") / "experience" / "halvorsen_bright.yaml").read_bytes() == before
+
+
+def test_a_form_save_with_a_bad_path_is_a_400(client: TestClient) -> None:
+    response = client.put(
+        "/api/profile/form",
+        json={"profile": "profile.example", "path": "../escape.yaml", "data": {}},
+    )
+    assert response.status_code == 400
+
+
+def test_adding_an_entry_requires_a_known_role(client: TestClient) -> None:
+    response = client.post(
+        "/api/profile/entry",
+        json={"profile": "profile.example", "role": "nonsense", "name": "X"},
+    )
+    assert response.status_code == 422
 
 
 def test_creating_a_profile_refuses_an_unsafe_name(client: TestClient) -> None:

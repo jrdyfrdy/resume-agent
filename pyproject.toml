@@ -15,6 +15,12 @@ dependencies = [
     "typer>=0.12",
     "pypdf>=5.0",
     "pyyaml>=6.0",
+    # Comment-preserving YAML round-trip. The web form editor rewrites
+    # profile files field by field; PyYAML's safe_dump would discard every
+    # comment, reflow the folded scalars, expand the flow lists and re-sort
+    # the keys on the first save. `profile/` is gitignored, so that loss is
+    # unrecoverable. PyYAML stays for reading.
+    "ruamel.yaml>=0.18",
     "sqlite-vec>=0.1.9",
     "rank-bm25>=0.2.2",
     "langchain-core>=1.6.1",

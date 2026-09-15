@@ -135,24 +135,38 @@ tab offers a **Create my profile** button that scaffolds one from the example.
 
 ### Editing from the browser
 
-The Profile tab has two modes. *Browse* renders what loaded; *Edit files* opens
-any file in the profile and saves it back. Three guarantees make that safe to do
-to non-regenerable data:
+The Profile tab has two modes. *Browse* renders what loaded; **Edit files** gives
+you a form per file — labelled inputs, month pickers, repeatable blocks for
+achievements, and a technology picker that only offers skills you have recorded.
+You never see YAML, and narratives are a title and a prose box with no Markdown
+to learn.
 
-- **Your text is written exactly as typed.** The editor moves file text, never
-  parsed objects, so comments, `>-` folded scalars, flow-style lists and key
-  order all survive. A YAML round-trip through `safe_dump` would silently delete
-  every comment in the file on the first save.
+Four guarantees make that safe to do to non-regenerable data:
+
+- **A form edit changes one field; the file changes in one field.** Saving goes
+  through `ruamel.yaml`, which round-trips comments, `>-` folded scalars,
+  flow-style lists and key order. `safe_dump` would have deleted every comment in
+  the file on the first save. Untouched fields are not even rewritten — a file
+  you open and save without editing comes back byte-identical, and a test asserts
+  that for every file in `profile.example/`.
 - **The whole profile is validated before anything is written.** Validation is
-  cross-file — deleting one alias from `skills.yaml` can invalidate an
-  experience file you never opened — so the edit is staged into a copy of the
-  directory and loaded there first. A save that would break the profile is
-  refused and the file on disk is left byte-identical.
+  cross-file — removing one alias from a skill can invalidate an entry you never
+  opened — so the edit is staged into a copy of the directory and loaded there
+  first. A save that would break the profile is refused and the file on disk is
+  left byte-identical.
 - **Every save keeps a timestamped backup** under `.profile-backups/`. `profile/`
   is gitignored, so this is the only undo that exists.
+- **Ids are generated, never typed.** Renaming an entry id has to cascade to
+  every achievement under it, and orphans the ids already recorded in the
+  tracker, so the form carries ids without offering them.
 
-Structured forms instead of YAML would need a comment-preserving parser
-(`ruamel.yaml`); that is a reasonable thing to add later and a separate decision.
+Two things the form does that the file format cannot: the technology picker is
+backed by your live skills list, so a bullet can never name something that would
+make the profile refuse to load; and removing a skill warns you first, with a
+count of how many achievements depend on it.
+
+A **Raw file** switch still opens the underlying YAML or Markdown, for the cases
+a form cannot express. You should not need it.
 
 Point any command at it with `--profile profile`, or pick it from the dropdown
 on the Profile tab, which is remembered between visits.

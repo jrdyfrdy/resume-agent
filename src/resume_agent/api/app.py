@@ -37,7 +37,10 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from resume_agent.api.models import (
     ApplicationSummary,
+    CreateEntryRequest,
     CreateProfileRequest,
+    DeleteFileRequest,
+    FormDocument,
     NodeEvent,
     ProfileDetail,
     ProfileFile,
@@ -48,12 +51,20 @@ from resume_agent.api.models import (
     RunRequest,
     RunSummary,
     SaveFileRequest,
+    SaveFormRequest,
     SaveResult,
     build_profile_detail,
     summarise_state,
 )
 from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
+from resume_agent.kb.forms import (
+    create_entry,
+    delete_document,
+    read_document,
+    skill_usage,
+    write_document,
+)
 from resume_agent.kb.loader import ProfileLoadError, load_profile
 from resume_agent.kb.writer import (
     ProfileWriteError,
@@ -278,6 +289,59 @@ def create_app(graph_factory=build_graph) -> FastAPI:
             return SaveResult(ok=False, error=str(exc))
 
         logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
+        return SaveResult(ok=True, backup=str(backup))
+
+    # -- structured editing ------------------------------------------------
+    #
+    # The form endpoints are a thin layer over `forms.py`, which is itself a layer
+    # over `writer.py`. Nothing here writes: it translates `ProfileWriteError`
+    # into a status code and lets the writer keep its guarantees.
+
+    @app.get("/api/profile/form", response_model=FormDocument)
+    async def profile_form(path: str, profile: str = DEFAULT_PROFILE) -> FormDocument:
+        directory = resolve_profile_dir(profile)
+        try:
+            document = read_document(directory, path)
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return FormDocument(**document, skill_usage=skill_usage(directory))
+
+    @app.put("/api/profile/form", response_model=SaveResult)
+    async def save_profile_form(request: SaveFormRequest) -> SaveResult:
+        directory = resolve_profile_dir(request.profile)
+        try:
+            resolve_editable_path(directory, request.path)
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        try:
+            backup = write_document(directory, request.path, request.data)
+        except ProfileWriteError as exc:
+            # Same contract as the text editor: content that does not validate
+            # is a result, not an error status, and the file is unchanged.
+            return SaveResult(ok=False, error=str(exc))
+
+        logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
+        return SaveResult(ok=True, backup=str(backup))
+
+    @app.post("/api/profile/entry", response_model=ProfileFile, status_code=201)
+    async def add_entry(request: CreateEntryRequest) -> ProfileFile:
+        directory = resolve_profile_dir(request.profile)
+        try:
+            relative = create_entry(directory, request.role, request.name)
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return ProfileFile(
+            profile=request.profile, path=relative, text=read_profile_file(directory, relative)
+        )
+
+    @app.delete("/api/profile/file", response_model=SaveResult)
+    async def remove_file(request: DeleteFileRequest) -> SaveResult:
+        directory = resolve_profile_dir(request.profile)
+        try:
+            backup = delete_document(directory, request.path)
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return SaveResult(ok=True, backup=str(backup))
 
     @app.post("/api/profile/create", response_model=ProfileFileList, status_code=201)
