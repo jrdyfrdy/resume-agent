@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -95,6 +96,22 @@ def _default_events() -> list[dict]:
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
+
+
+@pytest.fixture
+def writable_profile(tmp_path: Path, monkeypatch) -> tuple[TestClient, str, Path]:
+    """A profile the API may write to, in a working directory of its own.
+
+    `discover_profiles()` scans the current directory, so changing into a temp
+    one is what keeps a write test away from both `profile.example` -- which is
+    git-tracked and is what the golden snapshot renders from -- and any real
+    `profile/` the developer has created.
+    """
+    directory = tmp_path / "profile"
+    shutil.copytree(Path(__file__).resolve().parent.parent / "profile.example", directory)
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
+    return client, "profile", directory
 
 
 def read_events(client: TestClient, run_id: str) -> list[dict]:
@@ -278,7 +295,36 @@ def test_the_form_never_shows_a_raw_key_name() -> None:
     assert 'f.label' in script and 'esc(f.label)' in script
 
 
-def test_every_class_the_page_uses_is_defined() -> None:
+def test_no_functional_text_is_smaller_than_twelve_pixels() -> None:
+    """Half of the "pretend to be technical" problem was size.
+
+    Labels had drifted to 9.5-11px -- small enough that "Employer" and "Job
+    title" read as telemetry rather than as a form. 12px is the floor for
+    anything a person has to read.
+    """
+    styles = page_source().split("<style>")[1].split("</style>")[0]
+    tiny = re.findall(r"font(?:-size)?:[^;]*?\b(\d+(?:\.\d+)?)px", styles)
+
+    too_small = sorted({size for size in tiny if float(size) < 12})
+    assert not too_small, f"type below the 12px floor: {too_small}"
+
+
+def test_labels_are_not_dressed_up_as_telemetry() -> None:
+    """The dominant finding of the design audit, kept from coming back.
+
+    Fourteen rules applied tracked uppercase, so every label role on the page --
+    form fields, section headings, file groups, stat keys, table headers -- was
+    10-11px uppercase monospace. The catalog calls this "monospaced micro-labels
+    ... technical copy with no product evidence", and it is the one pattern that
+    made an ordinary form look generated.
+
+    Mono is still correct for actual machine output: elapsed seconds, node
+    names, ids, file paths, metric pairs.
+    """
+    styles = page_source().split("<style>")[1].split("</style>")[0]
+
+    assert "text-transform: uppercase" not in styles
+    assert "letter-spacing: .1em" not in styles
     """Caught a real one: `.sr-only` survived in the markup but its rule was
     lost in a rewrite, so a screen-reader-only label rendered as a heading in
     the middle of the editor. A class that styles nothing is either dead markup
@@ -451,25 +497,53 @@ def test_a_save_with_a_bad_path_is_a_400_not_a_result(client: TestClient) -> Non
     assert response.status_code == 400
 
 
-def test_invalid_content_is_a_result_not_an_error_status(client: TestClient) -> None:
+def test_the_shipped_example_is_read_only(client: TestClient) -> None:
+    """Learned the hard way.
+
+    On a fresh checkout the example is the *only* profile, so it was the only
+    thing the editor offered -- and editing it put a real name into a git-tracked
+    fixture and broke the golden snapshot. It stays readable, because it is the
+    reference you copy; it is simply not writable through the browser.
+    """
+    refused = [
+        ("/api/profile/file",
+         {"profile": "profile.example", "path": "identity.yaml", "text": "name: x\n"}),
+        ("/api/profile/form",
+         {"profile": "profile.example", "path": "identity.yaml", "data": {}}),
+    ]
+    for endpoint, payload in refused:
+        response = client.put(endpoint, json=payload)
+        assert response.status_code == 400, endpoint
+        assert "read-only" in response.json()["detail"]
+
+    assert client.post(
+        "/api/profile/entry",
+        json={"profile": "profile.example", "role": "experience", "name": "X"},
+    ).status_code == 400
+
+    assert client.get(
+        "/api/profile/form", params={"path": "identity.yaml", "profile": "profile.example"}
+    ).status_code == 200, "read-only must not mean invisible"
+
+
+def test_invalid_content_is_a_result_not_an_error_status(writable_profile) -> None:
     """Invalid YAML is an ordinary outcome of editing. 200 with `ok=False` keeps
     the editor's two branches honest: one renders a message, the other is a bug.
-
-    Uses `profile.example` deliberately -- a refused save must not touch disk,
-    and this asserts that on the very file the golden snapshot renders from.
+    A refused save must also not touch disk, so the bytes are asserted too.
     """
-    before = (Path("profile.example") / "identity.yaml").read_bytes()
+    client, name, directory = writable_profile
+    before = (directory / "identity.yaml").read_bytes()
 
     response = client.put(
         "/api/profile/file",
-        json={"profile": "profile.example", "path": "identity.yaml", "text": "name: [broken\n"},
+        json={"profile": name, "path": "identity.yaml", "text": "name: [broken\n"},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is False and body["backup"] is None
     assert "not valid YAML" in body["error"]
-    assert (Path("profile.example") / "identity.yaml").read_bytes() == before
+    assert (directory / "identity.yaml").read_bytes() == before
 
 
 def test_the_form_endpoint_returns_controls_values_and_suggestions(client: TestClient) -> None:
@@ -515,25 +589,25 @@ def test_a_file_no_form_understands_is_a_400(client: TestClient) -> None:
     ).status_code == 400
 
 
-def test_a_form_save_that_breaks_the_profile_is_refused(client: TestClient) -> None:
-    """Same contract as the text editor, and asserted against `profile.example`
-    on purpose: a refused save must not touch disk, and this is the file the
-    golden snapshot renders from."""
+def test_a_form_save_that_breaks_the_profile_is_refused(writable_profile) -> None:
+    """The cross-file failure, through the API: a technology no skill resolves.
+    A refused save must not touch disk, so the bytes are asserted too."""
+    client, name, directory = writable_profile
     path = "experience/halvorsen_bright.yaml"
-    before = (Path("profile.example") / "experience" / "halvorsen_bright.yaml").read_bytes()
+    before = (directory / "experience" / "halvorsen_bright.yaml").read_bytes()
 
-    document = client.get("/api/profile/form", params={"path": path}).json()
+    document = client.get("/api/profile/form", params={"path": path, "profile": name}).json()
     document["data"]["bullets"][0]["skills"] = ["not-a-real-skill"]
 
     response = client.put(
         "/api/profile/form",
-        json={"profile": "profile.example", "path": path, "data": document["data"]},
+        json={"profile": name, "path": path, "data": document["data"]},
     )
 
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is False and "not-a-real-skill" in body["error"]
-    assert (Path("profile.example") / "experience" / "halvorsen_bright.yaml").read_bytes() == before
+    assert (directory / "experience" / "halvorsen_bright.yaml").read_bytes() == before
 
 
 def test_a_form_save_with_a_bad_path_is_a_400(client: TestClient) -> None:

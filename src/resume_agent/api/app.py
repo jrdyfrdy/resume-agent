@@ -131,6 +131,33 @@ def resolve_profile_dir(name: str, root: Path | None = None) -> Path:
     return (root or Path.cwd()) / name
 
 
+def resolve_writable_profile_dir(name: str, root: Path | None = None) -> Path:
+    """Like `resolve_profile_dir`, but refuses the shipped example.
+
+    `profile.example/` is a fixture: the test suite loads it and the golden
+    `.tex` snapshot renders from it, and unlike `profile/` it is **tracked by
+    git**. Editing it through the UI therefore breaks a test and commits
+    whatever you typed -- which is exactly what happened, because the only
+    profile that exists on a fresh checkout is the example, so it was the only
+    thing the editor offered.
+
+    Read-only here rather than in `kb/writer.py`: the writer is a general tool
+    the tests use against temporary copies, and this is a rule about what the
+    *browser* may reach.
+    """
+    directory = resolve_profile_dir(name, root)
+    if name.endswith(".example"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{name} is the shipped example and is read-only -- it is what the tests "
+                f"load, and it is committed to git. Create your own knowledge base from "
+                f"it instead; it will be gitignored."
+            ),
+        )
+    return directory
+
+
 def discover_profiles(root: Path | None = None) -> list[ProfileOption]:
     """Every knowledge base sitting next to the project.
 
@@ -285,7 +312,7 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.put("/api/profile/file", response_model=SaveResult)
     async def save_profile_file(request: SaveFileRequest) -> SaveResult:
-        directory = resolve_profile_dir(request.profile)
+        directory = resolve_writable_profile_dir(request.profile)
         try:
             resolve_editable_path(directory, request.path)
         except ProfileWriteError as exc:
@@ -319,7 +346,7 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.put("/api/profile/form", response_model=SaveResult)
     async def save_profile_form(request: SaveFormRequest) -> SaveResult:
-        directory = resolve_profile_dir(request.profile)
+        directory = resolve_writable_profile_dir(request.profile)
         try:
             resolve_editable_path(directory, request.path)
         except ProfileWriteError as exc:
@@ -337,7 +364,7 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.post("/api/profile/entry", response_model=ProfileFile, status_code=201)
     async def add_entry(request: CreateEntryRequest) -> ProfileFile:
-        directory = resolve_profile_dir(request.profile)
+        directory = resolve_writable_profile_dir(request.profile)
         try:
             relative = create_entry(directory, request.role, request.name)
         except ProfileWriteError as exc:
@@ -348,7 +375,7 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.delete("/api/profile/file", response_model=SaveResult)
     async def remove_file(request: DeleteFileRequest) -> SaveResult:
-        directory = resolve_profile_dir(request.profile)
+        directory = resolve_writable_profile_dir(request.profile)
         try:
             backup = delete_document(directory, request.path)
         except ProfileWriteError as exc:

@@ -38,7 +38,11 @@
     --rule-firm:  #c7bba3;
     --ink:        #24221d;
     --ink-2:      #5d574c;
-    --ink-3:      #726a5c;   /* small mono metadata: 4.8:1 on paper */
+    /* Quiet text. Measured against --paper-2, the darkest surface it is used
+       on (the header and the tab strip), not against the lightest: at
+       #726a5c the inactive tabs and every chip remove-button sat at
+       4.41:1. 4.75:1 there, 5.7:1 on card. */
+    --ink-3:      #6d6558;
     --ink-4:      #9a9081;   /* architectural markers only: 3.1:1 */
     --accent:     #b3441f;   /* proof-mark vermilion. Marks live state only. */
     --on-accent:  #fffdf8;
@@ -47,6 +51,11 @@
     --warn:       #8a6318;
     --bad:        #a33222;
 
+    /* Mono is reserved for things that are literally machine output: elapsed
+       seconds, node names, ids, file paths, measured counts. It stopped being
+       a signal when it was also the face for "Employer" and "Job title" --
+       fourteen rules of 10px tracked uppercase turned ordinary words into
+       fake telemetry. Labels are sans, sentence case, and large enough to read. */
     --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -131,7 +140,7 @@
   .tabs button {
     appearance: none; background: none; border: 0; cursor: pointer;
     padding: 9px 15px; margin: 0; border-radius: 6px 6px 0 0;
-    font: 600 12px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
+    font: 600 13.5px/1 var(--sans); letter-spacing: 0;
     color: var(--ink-3); border-bottom: 2px solid transparent;
     margin-bottom: -1px; box-shadow: none;
   }
@@ -140,20 +149,15 @@
     color: var(--accent); border-bottom-color: var(--accent); background: var(--paper);
   }
   .tabs .count {
-    font-size: 10px; color: var(--ink-4); margin-left: 5px;
+    font-size: 12px; color: var(--ink-4); margin-left: 6px;
   }
 
   /* ------------------------------------------------------------------ hero */
   .hero { padding: 40px 26px 26px; max-width: 760px; }
-  .eyebrow {
-    font: 600 11px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase;
-    color: var(--accent); margin: 0 0 16px;
-  }
   h1 {
     font: 400 clamp(26px, 3.6vw, 38px)/1.14 var(--serif);
     letter-spacing: -.017em; margin: 0 0 16px; text-wrap: balance;
   }
-  h1 em { font-style: italic; color: var(--accent); }
   .lede { margin: 0; font-size: 16px; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
   .hero-compact {
     margin: 0; padding: 28px 26px 20px; max-width: 70ch;
@@ -164,8 +168,7 @@
   @media (prefers-reduced-motion: no-preference) {
     .hero > * { animation: rise .62s cubic-bezier(.22,.68,.3,1) backwards; }
     .hero > :nth-child(1) { animation-delay: .02s; }
-    .hero > :nth-child(2) { animation-delay: .08s; }
-    .hero > :nth-child(3) { animation-delay: .16s; }
+    .hero > :nth-child(2) { animation-delay: .09s; }
     @keyframes rise {
       from { opacity: 0; transform: translateY(9px); clip-path: inset(0 0 100% 0); }
       to   { opacity: 1; transform: none; clip-path: inset(0 0 -20% 0); }
@@ -184,12 +187,12 @@
   }
   section + section, .panel + .panel { margin-top: 26px; }
   h2 {
-    font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--ink-3); margin: 0 0 13px;
+    font: 600 13px/1.3 var(--sans); letter-spacing: 0; color: var(--ink-2);
+    margin: 0 0 14px;
   }
   h3 {
-    font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
-    margin: 0 0 9px; color: var(--ink-3);
+    font: 600 13px/1.3 var(--sans); letter-spacing: 0; margin: 0 0 10px;
+    color: var(--ink-2);
   }
   h3.alarm { color: var(--bad); }
   .panel-title {
@@ -259,15 +262,14 @@
      renders that hole as a solid block of rule colour. */
   .rail .phase { padding: 13px 12px 14px; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
   .phase-name {
-    font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--ink-3); margin-bottom: 11px;
+    font: 600 12px/1.3 var(--sans); color: var(--ink-3); margin-bottom: 11px;
   }
   .phase ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .phase li {
     display: flex; align-items: center; gap: 7px;
-    font: 11.5px/1.35 var(--mono); color: var(--ink-3); transition: color .22s;
+    font: 12px/1.45 var(--mono); color: var(--ink-3); transition: color .22s;
   }
-  .phase li .num { color: var(--ink-4); font-size: 10px; transition: color .22s; }
+  .phase li .num { color: var(--ink-4); font-size: 12px; transition: color .22s; }
   .phase li .tick {
     width: 3px; height: 13px; border-radius: 2px; flex: none;
     background: var(--rule); transition: background .22s;
@@ -282,7 +284,7 @@
     .phase li[data-state="active"] .tick { animation: beat 1.15s ease-in-out infinite; }
     @keyframes beat { 50% { opacity: .32; } }
   }
-  .rail-note { margin: 10px 0 0; font: 11.5px/1.5 var(--mono); color: var(--ink-3); }
+  .rail-note { margin: 12px 0 0; font: 13px/1.5 var(--sans); color: var(--ink-3); }
   @media (max-width: 860px) { .rail { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 460px) { .rail { grid-template-columns: 1fr; } }
 
@@ -291,7 +293,7 @@
      scrolls; the cap only catches a pathological repair loop. */
   #log { font: 12.5px/1.75 var(--mono); max-height: 60vh; overflow-y: auto; }
   #log .row { display: flex; gap: 11px; align-items: baseline; }
-  #log .t { color: var(--ink-3); min-width: 46px; text-align: right; flex: none; font-size: 11.5px; }
+  #log .t { color: var(--ink-3); min-width: 50px; text-align: right; flex: none; font-size: 12px; }
   #log .mark { width: 12px; flex: none; color: var(--ink-3); }
   #log .name { color: var(--ink); }
   #log .detail { color: var(--ink-3); }
@@ -307,8 +309,8 @@
   .verdict { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
   .verdict .role { font: 400 21px/1.25 var(--serif); }
   .badge {
-    font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase;
-    padding: 5px 9px; border-radius: 4px; border: 1px solid currentColor;
+    font: 600 12px/1 var(--sans); padding: 5px 10px; border-radius: 4px;
+    border: 1px solid currentColor;
   }
   .badge.strong_apply, .badge.apply { color: var(--ok); }
   .badge.stretch { color: var(--warn); }
@@ -320,9 +322,9 @@
     border-radius: 6px; overflow: hidden;
   }
   .stat { padding: 11px 13px; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
-  .stat .k { font: 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+  .stat .k { font: 12px/1.3 var(--sans); color: var(--ink-3); }
   .stat .v { font: 400 20px/1.25 var(--serif); margin-top: 5px; }
-  .stat .v small { font: 11px var(--mono); color: var(--ink-3); }
+  .stat .v small { font: 12px var(--mono); color: var(--ink-3); }
 
   .block { margin-top: 20px; }
   .list { list-style: none; margin: 0; padding: 0; }
@@ -352,14 +354,13 @@
 
   /* --------------------------------------------------------------- profile */
   .picker { display: flex; gap: 11px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
-  .picker label { font: 12px/1 var(--mono); color: var(--ink-3); }
+  .picker label { font: 13px/1 var(--sans); color: var(--ink-2); }
 
   /* --- mode toggle ------------------------------------------------------ */
   .modes { display: flex; gap: 0; margin-left: auto; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
   .modes button {
     appearance: none; border: 0; background: var(--paper); cursor: pointer;
-    padding: 7px 13px; font: 600 11px/1 var(--mono); letter-spacing: .05em;
-    text-transform: uppercase; color: var(--ink-3);
+    padding: 7px 14px; font: 600 12.5px/1 var(--sans); color: var(--ink-3);
   }
   .modes button + button { border-left: 1px solid var(--rule); }
   .modes button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
@@ -374,13 +375,12 @@
      information. --ink-4 is reserved for markers whose meaning is already
      carried by something beside them (the stage numbers on the rail). */
   .file-list .group {
-    font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
-    color: var(--ink-3); margin: 14px 0 6px;
+    font: 600 12px/1.3 var(--sans); color: var(--ink-3); margin: 16px 0 6px;
   }
   .file-list .group:first-child { margin-top: 0; }
   .file-list button {
     appearance: none; border: 0; background: none; cursor: pointer; text-align: left;
-    padding: 6px 8px; border-radius: 4px; font: 12px/1.4 var(--mono); color: var(--ink-2);
+    padding: 7px 9px; border-radius: 4px; font: 13px/1.4 var(--sans); color: var(--ink-2);
   }
   .file-list button:hover { background: var(--paper-2); color: var(--ink); }
   .file-list button[aria-current="true"] { background: var(--accent-wash); color: var(--ink); font-weight: 600; }
@@ -388,7 +388,7 @@
 
   .editor-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
   .editor-path { font: 12.5px/1 var(--mono); color: var(--ink); }
-  .editor-state { font: 11.5px/1 var(--mono); color: var(--ink-3); }
+  .editor-state { font: 13px/1 var(--sans); color: var(--ink-3); }
   .editor-state.saved { color: var(--ok); }
   .editor-state.dirty { color: var(--warn); }
   .editor-bar .cta { margin-left: auto; padding: 8px 16px; font-size: 13px; }
@@ -403,17 +403,17 @@
   /* --- form controls ---------------------------------------------------- */
   .field { margin-bottom: 18px; }
   .field-label {
-    display: block; font: 600 11px/1 var(--mono); letter-spacing: .08em;
-    text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px;
+    display: block; font: 600 13px/1.4 var(--sans); color: var(--ink);
+    margin-bottom: 6px;
   }
   .field-label .req { color: var(--accent); }
-  .field-help { margin: 0 0 7px; font-size: 12.5px; color: var(--ink-3); max-width: 68ch; }
+  .field-help { margin: 0 0 8px; font-size: 13px; color: var(--ink-3); max-width: 68ch; }
   .field input[type="text"], .field input[type="month"], .field textarea, .field select {
     width: 100%; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px;
     background: var(--paper); color: var(--ink); font: 13.5px/1.5 var(--sans);
   }
   .field textarea { resize: vertical; min-height: 68px; }
-  .field input[type="month"], .field select { width: auto; min-width: 190px; font-family: var(--mono); font-size: 12.5px; }
+  .field input[type="month"], .field select { width: auto; min-width: 200px; font-size: 13.5px; }
 
   .chip-field { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .chip-row { display: flex; flex-wrap: wrap; gap: 5px; }
@@ -443,7 +443,7 @@
   .row-add {
     appearance: none; background: none; border: 1px dashed var(--rule-firm);
     border-radius: 6px; padding: 7px 12px; cursor: pointer;
-    font: 600 11.5px/1 var(--mono); color: var(--ink-2);
+    font: 600 12.5px/1 var(--sans); color: var(--ink-2);
   }
   .row-add:hover { border-color: var(--accent); color: var(--accent); }
 
@@ -453,10 +453,17 @@
     padding: 14px 16px 2px; margin: 0 0 12px; background: var(--paper);
   }
   .object legend {
-    font: 600 12px/1 var(--mono); color: var(--ink); padding: 0 7px;
+    font: 600 13.5px/1.3 var(--sans); color: var(--ink); padding: 0 7px;
     display: flex; align-items: center; gap: 4px;
   }
   .file-list .add-entry { color: var(--accent); }
+
+  .ghost {
+    appearance: none; background: none; border: 1px solid var(--rule);
+    border-radius: 6px; padding: 7px 14px; cursor: pointer;
+    font: 600 12.5px/1 var(--sans); color: var(--ink-2);
+  }
+  .ghost:hover { border-color: var(--accent); color: var(--accent); }
 
   .ok-note {
     margin: 0 0 10px; padding: 9px 12px; border-left: 2px solid var(--ok);
@@ -468,22 +475,22 @@
   .entry-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
   .entry-head .name { font: 400 17px/1.3 var(--serif); }
   .kind {
-    font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
-    color: var(--ink-4); border: 1px solid var(--rule-firm); border-radius: 3px; padding: 3px 5px;
+    font: 600 12px/1 var(--sans); color: var(--ink-3);
+    border: 1px solid var(--rule); border-radius: 3px; padding: 3px 6px;
   }
-  .entry-sub { font: 11.5px/1.5 var(--mono); color: var(--ink-3); margin-top: 3px; }
+  .entry-sub { font: 12.5px/1.5 var(--mono); color: var(--ink-3); margin-top: 4px; }
   .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
   .chip {
-    font: 11px/1 var(--mono); padding: 4px 7px; border-radius: 3px;
+    font: 12px/1.3 var(--mono); padding: 5px 8px; border-radius: 3px;
     background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--rule);
   }
   .chip.metric { background: var(--accent-wash); border-color: transparent; color: var(--ink); }
 
   .bullet { padding: 10px 0 10px 14px; border-left: 2px solid var(--rule); margin-top: 11px; }
   .bullet .text { font-size: 14px; }
-  .bullet .bid { font: 10.5px/1 var(--mono); color: var(--ink-4); margin-bottom: 5px; }
+  .bullet .bid { font: 12px/1 var(--mono); color: var(--ink-4); margin-bottom: 6px; }
   .bullet.claim { border-left-color: var(--warn); }
-  .bullet .flag { font: 10px/1 var(--mono); color: var(--warn); text-transform: uppercase; letter-spacing: .08em; }
+  .bullet .flag { font: 12px/1 var(--sans); color: var(--warn); }
 
   .setup { border-left: 3px solid var(--accent); padding: 4px 0 4px 15px; }
   .setup ol { margin: 0; padding-left: 18px; }
@@ -497,17 +504,17 @@
   .guide li { margin-bottom: 8px; font-size: 14.5px; }
   .fields { width: 100%; border-collapse: collapse; margin-top: 10px; }
   .fields th {
-    text-align: left; font: 600 10px/1 var(--mono); letter-spacing: .1em;
-    text-transform: uppercase; color: var(--ink-3); padding-bottom: 8px;
+    text-align: left; font: 600 12px/1.3 var(--sans); color: var(--ink-3);
+    padding-bottom: 9px;
   }
   .fields td { padding: 9px 12px 9px 0; border-top: 1px solid var(--rule); font-size: 13.5px; vertical-align: top; }
-  .fields td:first-child { white-space: nowrap; font: 12.5px var(--mono); color: var(--accent); }
+  .fields td:first-child { white-space: nowrap; font: 600 13.5px var(--sans); color: var(--ink); }
 
   /* --------------------------------------------------------------- history */
   table.apps { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
   table.apps th {
-    text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10.5px;
-    letter-spacing: .1em; text-transform: uppercase; padding-bottom: 7px;
+    text-align: left; font: 600 12px/1.3 var(--sans); color: var(--ink-3);
+    padding-bottom: 8px;
   }
   table.apps td { padding: 8px 0; border-top: 1px solid var(--rule); }
   table.apps td.num { text-align: right; color: var(--ink-2); }
@@ -519,7 +526,7 @@
   /* ---------------------------------------------------------------- footer */
   footer {
     padding: 17px 26px; border-top: 1px solid var(--rule); background: var(--paper-2);
-    font: 11.5px/1.6 var(--mono); color: var(--ink-2);
+    font: 12.5px/1.7 var(--mono); color: var(--ink-2);
     display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between;
   }
 
@@ -559,8 +566,7 @@
       textarea moves up into the first viewport where a daily tool belongs.
     -->
     <div class="hero" id="hero">
-      <p class="eyebrow">Grounded resume generation</p>
-      <h1>Every line on the page traces back to <em>something you actually did</em>.</h1>
+      <h1>Every line on the page traces back to something you actually did.</h1>
       <p class="lede">
         Paste a posting. The agent retrieves from your career knowledge base, rewrites only what it
         can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
@@ -643,8 +649,15 @@
           -->
           <div class="modes" role="group" aria-label="Profile mode" id="profile-modes">
             <button type="button" data-mode="browse" aria-pressed="true">Browse</button>
-            <button type="button" data-mode="edit" aria-pressed="false">Edit files</button>
+            <button type="button" data-mode="edit" aria-pressed="false">Edit</button>
           </div>
+          <!--
+            Always reachable, not only when nothing exists. It used to appear
+            solely in the empty state — and since the example always exists,
+            the empty state never showed, so there was no way to make your own
+            knowledge base and the example was the only thing you could edit.
+          -->
+          <button type="button" class="ghost" id="new-profile">New</button>
         </div>
 
         <div id="profile-body"></div>
@@ -1302,6 +1315,18 @@ function announce(node) {
 
 const editor = { path: null, doc: null, saved: "", files: [], raw: false };
 
+/* Edit mode swaps the whole editor out for a notice on a read-only profile, so
+   the real markup is kept here and put back when a writable one is chosen.
+   Captured once, before anything has had a chance to change it. */
+const EDITOR_SHELL = $("profile-editor").innerHTML;
+
+function restoreEditorShell() {
+  $("profile-editor").innerHTML = EDITOR_SHELL;
+  editor.path = null;
+  editor.files = [];
+  wireEditorControls();
+}
+
 /* The form writes straight into `editor.doc.data`, and dirtiness is a
    comparison of that against the snapshot taken when the file was opened. No
    separate "collect the values out of the DOM" pass, which is where form
@@ -1715,6 +1740,10 @@ function setRawMode(on) {
   if (editor.path) openFile(editor.path);
 }
 
+function isReadOnly() {
+  return activeProfile.endsWith(".example");
+}
+
 function setProfileMode(mode) {
   const editing = mode === "edit";
   $("profile-modes").querySelectorAll("button").forEach((b) => {
@@ -1722,22 +1751,49 @@ function setProfileMode(mode) {
   });
   $("profile-body").classList.toggle("hidden", editing);
   $("profile-editor").classList.toggle("hidden", !editing);
-  if (editing && !editor.files.length) loadFileList();
+
+  if (editing && isReadOnly()) {
+    // Explained up front rather than as a rejected save. The example is what
+    // the tests load and it is committed to git, so editing it breaks a test
+    // and puts whatever you typed into version control.
+    $("profile-editor").innerHTML =
+      `<div class="setup">
+         <p><strong>${esc(activeProfile)} is the worked example, and it is read-only.</strong>
+            It is what the test suite loads, and unlike your own knowledge base it is
+            committed to git — so anything you typed here would be published.</p>
+         <p>Make your own from it. It will be gitignored, and it starts as a complete
+            copy you can edit into yourself.</p>
+         <button class="cta" id="create-from-example" style="margin-left:0">Create my profile</button>
+       </div>`;
+    $("create-from-example").addEventListener("click", createProfile);
+    return;
+  }
+
+  if (editing) {
+    if (!$("file-list")) restoreEditorShell();
+    if (!editor.files.length) loadFileList();
+  }
 }
 
 async function createProfile() {
-  const button = $("create-profile");
+  const taken = new Set(profileOptions.map((o) => o.name));
+  let name = "profile";
+  for (let n = 2; taken.has(name); n += 1) name = `profile${n}`;
+
+  const button = $("create-from-example") || $("create-profile");
   if (button) { button.disabled = true; button.textContent = "Creating…"; }
   try {
     const response = await fetch("/api/profile/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "profile", source: "profile.example" }),
+      body: JSON.stringify({ name, source: activeProfile }),
     });
     if (!response.ok) throw new Error(await explain(response));
-    safeSet("resume-agent.profile", "profile");
+    safeSet("resume-agent.profile", name);
+    activeProfile = name;
     await loadProfiles();
     await loadProfileSummary();
+    restoreEditorShell();
     setProfileMode("edit");
   } catch (e) {
     $("profile-body").innerHTML = `<div class="errors">${esc(e.message)}</div>`;
@@ -1758,23 +1814,27 @@ $("profile-select").addEventListener("change", async (e) => {
   await Promise.all([renderProfileBody(), loadProfileSummary()]);
 });
 
-$("editor-text").addEventListener("input", refreshEditorState);
-$("save-file").addEventListener("click", saveFile);
-$("raw-toggle").addEventListener("change", (e) => setRawMode(e.target.checked));
+function wireEditorControls() {
+  $("editor-text").addEventListener("input", refreshEditorState);
+  $("save-file").addEventListener("click", saveFile);
+  $("raw-toggle").addEventListener("change", (e) => setRawMode(e.target.checked));
+  // Tab inserts two spaces instead of leaving the field: the raw view is a YAML
+  // editor, and indentation is the syntax.
+  $("editor-text").addEventListener("keydown", (e) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const el = e.target, at = el.selectionStart;
+      el.value = el.value.slice(0, at) + "  " + el.value.slice(el.selectionEnd);
+      el.selectionStart = el.selectionEnd = at + 2;
+      refreshEditorState();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveFile(); }
+  });
+}
+wireEditorControls();
+$("new-profile").addEventListener("click", createProfile);
 $("profile-modes").querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => setProfileMode(button.dataset.mode));
-});
-// Tab inserts two spaces instead of leaving the field: this is a YAML editor,
-// and indentation is the syntax.
-$("editor-text").addEventListener("keydown", (e) => {
-  if (e.key === "Tab") {
-    e.preventDefault();
-    const el = e.target, at = el.selectionStart;
-    el.value = el.value.slice(0, at) + "  " + el.value.slice(el.selectionEnd);
-    el.selectionStart = el.selectionEnd = at + 2;
-    refreshEditorState();
-  }
-  if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveFile(); }
 });
 // The browser's own guard, for the close-tab case a confirm() cannot cover.
 window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
