@@ -15,6 +15,7 @@ import pytest
 from resume_agent.kb.loader import load_profile
 from resume_agent.kb.writer import (
     ProfileWriteError,
+    create_empty_profile,
     default_backup_dir,
     read_profile_file,
     relative_profile_files,
@@ -296,3 +297,49 @@ def test_the_example_profile_is_never_touched(profile: Path) -> None:
     write_profile_file(profile, AN_ENTRY, read_profile_file(profile, AN_ENTRY) + "\n# edit\n")
 
     assert (PROFILE_EXAMPLE / AN_ENTRY).read_bytes() == before
+
+
+# ===========================================================================
+# Starting a profile from nothing
+# ===========================================================================
+
+
+def test_an_empty_profile_loads(tmp_path: Path) -> None:
+    """The whole point: the smallest directory that `load_profile` accepts, so
+    the first thing in a new knowledge base is the owner's own material rather
+    than a fictional person's to be deleted first."""
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada Lovelace")
+
+    profile = load_profile(target)
+    assert profile.identity.name == "Ada Lovelace"
+    assert profile.experience == []
+    assert profile.projects == []
+    assert profile.narratives == []
+    assert profile.skills == []
+
+
+def test_an_empty_profile_has_somewhere_to_put_things(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada")
+
+    assert (target / "experience").is_dir()
+    assert (target / "projects").is_dir()
+    # README.md is skipped by the loader, so it can document the directory.
+    assert (target / "narratives" / "README.md").is_file()
+    assert load_profile(target).narratives == []
+
+
+def test_an_empty_profile_may_omit_the_name(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    create_empty_profile(target)
+
+    assert load_profile(target).identity.name == ""
+
+
+def test_creating_over_an_existing_directory_is_refused(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    target.mkdir()
+
+    with pytest.raises(ProfileWriteError, match="refusing to overwrite"):
+        create_empty_profile(target)

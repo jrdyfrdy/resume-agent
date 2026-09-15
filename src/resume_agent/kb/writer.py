@@ -40,6 +40,7 @@ from resume_agent.kb.loader import (
     IDENTITY_FILE,
     NARRATIVES_DIR,
     PROJECTS_DIR,
+    SKILLS_FILE,
     ProfileLoadError,
     load_profile,
 )
@@ -288,3 +289,78 @@ def scaffold_profile(source: Path, target: Path) -> None:
     except ProfileLoadError as exc:  # pragma: no cover - source is always valid
         shutil.rmtree(target, ignore_errors=True)
         raise ProfileWriteError(f"copied profile does not load: {exc}") from exc
+
+
+# Only `identity.yaml` and `skills.yaml` are `required=True` in `load_profile`,
+# and every list on `Profile` defaults to empty -- so this is the smallest thing
+# that loads. The skills table keeps its explanatory header because that text
+# documents the schema rather than any particular person's stack.
+_EMPTY_IDENTITY = """\
+name: {name}
+email: ""
+phone: ""
+location: ""
+links: []
+work_authorization: ""
+"""
+
+_EMPTY_SKILLS = """\
+# The canonical skill vocabulary (spec 3.2).
+#
+# This table does double duty:
+#   1. query expansion at retrieval time -- "k8s" in a posting finds "Kubernetes"
+#   2. the allow-list for the fabrication check -- a generated bullet naming a
+#      technology that is not in here is, by definition, invented
+#
+# `canonical` is written in *display* casing ("PostgreSQL", not "postgresql")
+# because it is what the Technical Skills section prints. Matching is
+# case-insensitive throughout, so bullets can still write `skills: [postgresql]`.
+skills: []
+"""
+
+_EMPTY_NARRATIVES_README = """\
+# Narratives
+
+Short pieces of prose about how you work -- why you chose this field, the
+hardest thing you have debugged, what you are trying to get better at. One
+markdown file each; the filename is the name.
+
+They are never copied into a resume. They are raw material for the cover
+letter, which is why they can be informal: write them the way you would explain
+it to someone, not the way you would write a bullet point.
+
+This README is skipped when the profile loads, so it is safe to keep here.
+"""
+
+
+def create_empty_profile(target: Path, *, name: str = "") -> None:
+    """Start a profile with nothing in it but you.
+
+    The counterpart to `scaffold_profile`, and the better default of the two.
+    Copying the worked example gives someone a directory that loads immediately,
+    which is genuinely useful for trying the tool out -- but it also means a
+    profile you intend to *use* begins as a stranger's career, and every job,
+    project and narrative in it has to be found and deleted before your own
+    material is the only thing in there. Starting empty has no such step.
+    """
+    target = Path(target)
+    if target.exists():
+        raise ProfileWriteError(f"{target} already exists -- refusing to overwrite it")
+
+    (target / EXPERIENCE_DIR).mkdir(parents=True)
+    (target / PROJECTS_DIR).mkdir(parents=True)
+    (target / NARRATIVES_DIR).mkdir(parents=True)
+
+    written = {
+        IDENTITY_FILE: _EMPTY_IDENTITY.format(name=name.strip() or '""'),
+        SKILLS_FILE: _EMPTY_SKILLS,
+        f"{NARRATIVES_DIR}/README.md": _EMPTY_NARRATIVES_README,
+    }
+    for relative, text in written.items():
+        (target / relative).write_text(text, encoding="utf-8", newline="\n")
+
+    try:
+        load_profile(target)
+    except ProfileLoadError as exc:  # pragma: no cover - the skeleton is fixed
+        shutil.rmtree(target, ignore_errors=True)
+        raise ProfileWriteError(f"new profile does not load: {exc}") from exc

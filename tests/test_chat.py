@@ -30,7 +30,11 @@ from resume_agent.chat.extract import (
 )
 from resume_agent.chat.session import Registry, classify
 from resume_agent.kb.loader import load_profile
-from resume_agent.kb.writer import read_profile_file, scaffold_profile
+from resume_agent.kb.writer import (
+    PROFILE_BACKUP_DIR_ENV_VAR,
+    read_profile_file,
+    scaffold_profile,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROFILE_EXAMPLE = REPO_ROOT / "profile.example"
@@ -60,6 +64,7 @@ class ScriptedExtractor(BaseChatModel):
 
     fields: ExtractionFields = ExtractionFields(reply="ok")
     call_count: int = 0
+    last_prompt: str = ""
 
     @property
     def _llm_type(self) -> str:
@@ -72,8 +77,9 @@ class ScriptedExtractor(BaseChatModel):
         fake = self
 
         class _Runnable:
-            def invoke(self, _messages: Any, **_kw: Any) -> ExtractionFields:
+            def invoke(self, messages: Any, **_kw: Any) -> ExtractionFields:
                 fake.call_count += 1
+                fake.last_prompt = "\n".join(str(m.content) for m in messages)
                 return fake.fields
 
         return _Runnable()
@@ -248,6 +254,20 @@ def test_extract_calls_the_model_once_and_gates_the_result(profile) -> None:
 
     assert model.call_count == 1
     assert proposal.flagged(), "the gate did not run on the model's output"
+
+
+def test_the_model_is_shown_what_it_is_allowed_to_remove(profile) -> None:
+    """A deletion may only name something the model can see. The first live run
+    of this feature proposed every job and project and then said it could find
+    no narratives -- because the prompt listed roles and skills but not
+    narratives, so the four sitting on disk were invisible to it."""
+    model = ScriptedExtractor()
+
+    extract("Remove my narratives", profile, llm=model)
+
+    for name in ("why_backend", "hardest_bug", "how_i_learn", "values"):
+        assert name in model.last_prompt, f"{name} was never shown to the model"
+    assert AN_ENTRY in model.last_prompt
 
 
 # ===========================================================================
@@ -433,6 +453,29 @@ def test_weak_openers(sentence: str, weak: bool) -> None:
         ("we shipped a new billing service last spring", "extract"),
         ("hello", "advise"),
         ("", "advise"),
+        # The failure this pattern was added for: every way of asking for a
+        # removal used to land in `advise`, which cannot write, and the model
+        # answered by agreeing to do something it had no means of doing.
+        (
+            "Remove everything on my jobs, projects, and narratives because they "
+            "are all templated information. Just make profile stay for now",
+            "extract",
+        ),
+        ("Delete my projects", "extract"),
+        ("please get rid of the TileCache project", "extract"),
+        ("Clear out my experience section", "extract"),
+        # A polite command is shaped like a question -- question mark, opening
+        # word `_ASKS` matches -- but it is still a command.
+        ("Can you remove my narratives?", "extract"),
+        ("could you please delete exp_acme", "extract"),
+        # ...whereas these really are questions, and the subject is the tell:
+        # "should I" is someone deciding, "can you" is someone instructing.
+        ("Should I remove my TileCache project?", "advise"),
+        ("What should I delete?", "advise"),
+        ("Is it worth removing the ledger project?", "advise"),
+        # Anchored at the start, so a sentence that merely describes deleting
+        # is dictation about the work, not an instruction about the profile.
+        ("The exporter deletes stale rows every night", "advise"),
     ],
 )
 def test_routing(message: str, intent: str) -> None:
@@ -461,3 +504,103 @@ def test_turns_are_addressable_by_id_and_bounded() -> None:
 
     assert registry.get(turn.turn_id) is turn
     assert registry.get("nope") is None
+
+
+# ===========================================================================
+# Deletions
+#
+# The direction where fabrication is structurally impossible -- the model names
+# an id and writes no prose -- but the direction that destroys something, so
+# what is tested here is that nothing goes without an explicit accept.
+# ===========================================================================
+
+
+def _deletion(target: str) -> ExtractionFields:
+    return ExtractionFields(reply="ok", deletions=[{"target_id": target}])
+
+
+def test_a_deletion_names_what_goes_with_it(profile) -> None:
+    """The achievement count is the part that is easy to forget and impossible
+    to reconstruct from the file's name."""
+    item = build_proposal(_deletion(AN_ENTRY), "remove that job", profile).items[0]
+
+    assert item.kind == "deletion"
+    assert AN_ENTRY in item.summary
+    assert "4 achievements go with it" in item.summary
+    assert not item.flags
+
+
+def test_a_narrative_can_be_removed_by_name(profile) -> None:
+    item = build_proposal(_deletion("why_backend"), "drop that one", profile).items[0]
+
+    assert item.kind == "deletion"
+    assert "why_backend" in item.summary
+    assert not item.flags
+
+
+def test_a_deletion_target_that_does_not_exist_is_flagged(profile) -> None:
+    """Shown rather than dropped: the useful answer is nearly always "you meant
+    this other one", and only the user can say which."""
+    item = build_proposal(_deletion("exp_nope"), "remove it", profile).items[0]
+
+    assert [flag.kind for flag in item.flags] == ["unknown_entry"]
+    assert "exp_nope" in item.flags[0].detail
+
+
+def test_a_deletion_is_not_applied_unless_accepted(profile_dir: Path, profile) -> None:
+    proposal = build_proposal(_deletion(AN_ENTRY), "remove that job", profile)
+    before = sorted(p.name for p in (profile_dir / "experience").iterdir())
+
+    assert apply(proposal, profile_dir, []) == []
+    assert sorted(p.name for p in (profile_dir / "experience").iterdir()) == before
+
+
+def test_accepting_a_deletion_removes_the_file_and_keeps_a_backup(
+    profile_dir: Path, profile, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(PROFILE_BACKUP_DIR_ENV_VAR, str(tmp_path / "backups"))
+    proposal = build_proposal(_deletion(AN_ENTRY), "remove that job", profile)
+
+    done = apply(proposal, profile_dir, ["deletion-0"])
+
+    assert done == [f"removed {AN_ENTRY}"]
+    assert not (profile_dir / "experience" / "halvorsen_bright.yaml").exists()
+    assert list((tmp_path / "backups").rglob("halvorsen_bright.yaml"))
+    # The point of routing every write through the same layer: it still loads.
+    assert AN_ENTRY not in {entry.id for entry in load_profile(profile_dir).entries()}
+
+
+def test_accepting_a_narrative_deletion_removes_the_markdown(
+    profile_dir: Path, profile, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv(PROFILE_BACKUP_DIR_ENV_VAR, str(tmp_path / "backups"))
+    proposal = build_proposal(_deletion("why_backend"), "drop it", profile)
+
+    apply(proposal, profile_dir, ["deletion-0"])
+
+    assert not (profile_dir / "narratives" / "why_backend.md").exists()
+    assert "why_backend" not in {n.name for n in load_profile(profile_dir).narratives}
+
+
+def test_additions_are_written_before_deletions(
+    profile_dir: Path, profile, tmp_path: Path, monkeypatch
+) -> None:
+    """Each write validates the whole directory alone, so no intermediate state
+    may be invalid -- the same reason skills are written first."""
+    monkeypatch.setenv(PROFILE_BACKUP_DIR_ENV_VAR, str(tmp_path / "backups"))
+    fields = ExtractionFields(
+        reply="ok",
+        bullets=[{
+            "entry_id": "exp_northwind_data",
+            "bullet": {"canonical": "Rewrote the exporter to stream."},
+        }],
+        deletions=[{"target_id": AN_ENTRY}],
+    )
+    proposal = build_proposal(fields, "Rewrote the exporter to stream. Remove Halvorsen.", profile)
+
+    done = apply(proposal, profile_dir, ["bullet-0", "deletion-0"])
+
+    assert done == ["added an achievement to exp_northwind_data", f"removed {AN_ENTRY}"]
+    after = load_profile(profile_dir)
+    assert AN_ENTRY not in {entry.id for entry in after.entries()}
+    assert any("stream" in b.canonical for b in after.all_bullets())

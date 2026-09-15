@@ -22,6 +22,7 @@ from fastapi.testclient import TestClient
 
 from resume_agent.api.app import GRAPH_NODES, create_app, discover_profiles
 from resume_agent.api.models import summarise_state
+from resume_agent.kb.loader import load_profile
 from resume_agent.models.fit import FitReport
 from resume_agent.models.job import JobSpec, JobSpecFields, Requirement
 from resume_agent.models.resume import TailoredBullet
@@ -638,6 +639,94 @@ def test_creating_over_an_existing_profile_is_refused(client: TestClient) -> Non
     response = client.post("/api/profile/create", json={"name": "profile.example"})
     assert response.status_code == 400
     assert "already exists" in response.json()["detail"]
+
+
+def test_a_new_profile_starts_empty_by_default(tmp_path: Path, monkeypatch) -> None:
+    """Empty, not a copy of the example. Copying gives someone a directory that
+    loads immediately, but every job and narrative in it then has to be found
+    and deleted before the profile describes its actual owner."""
+    monkeypatch.chdir(tmp_path)
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
+
+    response = client.post(
+        "/api/profile/create", json={"name": "mine", "display_name": "Ada Lovelace"}
+    )
+
+    assert response.status_code == 201
+    assert sorted(response.json()["files"]) == [
+        "identity.yaml",
+        "narratives/README.md",   # documents the directory; skipped when loading
+        "skills.yaml",
+    ]
+    assert load_profile(tmp_path / "mine").identity.name == "Ada Lovelace"
+
+
+def test_a_new_profile_can_still_copy_the_example(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    shutil.copytree(
+        Path(__file__).resolve().parent.parent / "profile.example",
+        tmp_path / "profile.example",
+    )
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
+
+    response = client.post(
+        "/api/profile/create",
+        json={"name": "copy", "source": "profile.example", "mode": "example"},
+    )
+
+    assert response.status_code == 201
+    assert load_profile(tmp_path / "copy").experience
+
+
+# ===========================================================================
+# Removing a file
+# ===========================================================================
+
+
+def test_removing_a_file_keeps_a_backup_and_still_loads(
+    writable_profile: tuple[TestClient, str, Path],
+) -> None:
+    client, name, directory = writable_profile
+
+    response = client.request(
+        "DELETE",
+        "/api/profile/file",
+        json={"profile": name, "path": "experience/halvorsen_bright.yaml"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert not (directory / "experience" / "halvorsen_bright.yaml").exists()
+    assert "exp_halvorsen_bright" not in {e.id for e in load_profile(directory).entries()}
+
+
+def test_removing_a_file_the_profile_needs_is_refused(
+    writable_profile: tuple[TestClient, str, Path],
+) -> None:
+    """`delete_document` puts the file back rather than leaving a profile that
+    will not load, so this is a 400 and not a broken directory."""
+    client, name, directory = writable_profile
+
+    response = client.request(
+        "DELETE", "/api/profile/file", json={"profile": name, "path": "skills.yaml"}
+    )
+
+    assert response.status_code == 400
+    assert (directory / "skills.yaml").is_file()
+    assert load_profile(directory).skills
+
+
+def test_removing_from_the_example_is_refused(client: TestClient) -> None:
+    response = client.request(
+        "DELETE",
+        "/api/profile/file",
+        json={"profile": "profile.example", "path": "narratives/values.md"},
+    )
+
+    assert response.status_code == 400
+    assert (
+        Path(__file__).resolve().parent.parent / "profile.example" / "narratives" / "values.md"
+    ).is_file()
 
 
 def test_unknown_run_is_404(client: TestClient) -> None:

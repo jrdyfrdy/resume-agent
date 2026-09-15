@@ -408,6 +408,10 @@
     margin-top: 6px; padding: 7px 10px; border-left: 2px solid var(--bad);
     background: var(--accent-wash); font-size: 13px; color: var(--ink-2);
   }
+  /* A removal is the one item in a proposal that destroys something, so it does
+     not look like the additions it sits beside. */
+  .prop-item.removes .prop-summary { color: var(--bad); }
+  .prop-item.removes { border-left: 2px solid var(--bad); padding-left: 10px; }
   .proposal .controls { margin-top: 16px; }
 
   .chat-composer textarea {
@@ -497,6 +501,16 @@
     font: 600 12.5px/1 var(--sans); color: var(--ink-2);
   }
   .row-add:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Destructive, so it reads as an outline rather than a second filled button
+     sitting next to Save. It only fills in on hover, once you have aimed at it. */
+  .btn-danger {
+    appearance: none; background: none; border: 1px solid var(--rule-firm);
+    border-radius: 6px; padding: 7px 12px; cursor: pointer;
+    font: 600 12.5px/1 var(--sans); color: var(--bad);
+  }
+  .btn-danger:hover { background: var(--bad); border-color: var(--bad); color: var(--on-accent); }
+  .btn-danger:disabled { opacity: .5; cursor: default; background: none; color: var(--bad); }
 
   .objects > .field-label { margin-bottom: 10px; }
   .object {
@@ -728,6 +742,13 @@
                   should need it.
                 -->
                 <label class="check"><input type="checkbox" id="raw-toggle"> Raw file</label>
+                <!--
+                  Hidden unless the open file is one that can actually go: a job,
+                  a project or a narrative. identity.yaml and skills.yaml are
+                  required for the profile to load, so the server would refuse
+                  and roll back — a button that always fails is worse than none.
+                -->
+                <button class="btn-danger hidden" id="delete-file">Remove</button>
                 <button class="cta" id="save-file" disabled>Save</button>
               </div>
               <div id="editor-message"></div>
@@ -790,9 +811,11 @@
         <h3>Where it lives</h3>
         <p>
           In a folder called <code>profile/</code> beside the project. You do not have to create it
-          by hand: the <strong>Profile</strong> tab offers a <strong>Create my profile</strong>
-          button when none exists, which copies the worked example so you start from something
-          complete and edit it into your own.
+          by hand: the <strong>Profile</strong> tab has a <strong>New profile</strong> button. It
+          asks for your name and gives you an empty knowledge base to fill in. Leave the name
+          blank and it copies the worked example instead, which is useful for seeing what a
+          finished profile looks like &mdash; but everything in it belongs to a fictional person,
+          so it is a demo to read rather than a draft to edit.
         </p>
         <p>
           It is gitignored, so your real career data is never committed. Every save keeps a
@@ -884,6 +907,39 @@
           <li>Touch the page geometry. It shortens what it writes; it does not shrink your margins
             to make more fit.</li>
         </ul>
+
+        <h3>Removing things</h3>
+        <p>
+          Open a job, project or narrative and use <strong>Remove</strong> in the editor bar. It
+          says how many achievements go with the file before it does anything, and keeps a
+          timestamped copy in the backups folder either way.
+        </p>
+        <p>
+          Your name and your Skills table have no Remove button: the profile will not load without
+          them. To empty them, clear the fields instead. A whole section you want gone &mdash; all
+          your projects, say &mdash; is removed one file at a time, or asked for in
+          <strong>Chat</strong>.
+        </p>
+
+        <h3>Talking to it instead of typing</h3>
+        <p>
+          The <strong>Chat</strong> tab does two things, and picks between them by reading your
+          message. Ask a question and it answers from a count of what is actually in your profile
+          &mdash; which achievements record no numbers, which themes are over the three-per-page
+          cap, which skills nothing uses. It is reading, not guessing.
+        </p>
+        <p>
+          Or just tell it what you did, in whatever order it comes out, and it turns that into
+          achievements against the right role. <strong>Nothing it proposes is saved until you
+          press the button.</strong> Anything it wrote that you did not say &mdash; a number, a
+          technology &mdash; arrives unticked and flagged in red, because your message is the only
+          thing it is allowed to draw from. Asking to remove something works the same way: it
+          shows you what would go, and waits.
+        </p>
+        <p>
+          It cannot change anything on its own. If it ever replies that it has edited or removed
+          something without showing you a card to confirm, nothing happened.
+        </p>
 
         <h3>If you would rather edit the files</h3>
         <p>
@@ -1502,6 +1558,7 @@ async function openFile(path) {
     renderForm();
     loadFileList();
     refreshEditorState();
+    refreshDeleteButton();
   } catch (e) {
     setEditorMessage(e.message, false);
   }
@@ -1794,6 +1851,62 @@ async function saveFile() {
   }
 }
 
+/* Which files may be removed at all.
+
+   Entries and narratives only — the same scope the chat's deletions use, so the
+   two surfaces agree about what "removable" means. identity.yaml and skills.yaml
+   are required for the profile to load; education.yaml and certifications.yaml
+   are whole sections rather than one item, and emptying them in the form is the
+   clearer way to say that. */
+function isRemovable(path) {
+  if (!path || isReadOnly()) return false;
+  if (/^(experience|projects)\/[^/]+\.yaml$/.test(path)) return true;
+  return /^narratives\/[^/]+\.md$/.test(path) && !/^narratives\/readme\.md$/i.test(path);
+}
+
+function refreshDeleteButton() {
+  $("delete-file").classList.toggle("hidden", !isRemovable(editor.path));
+}
+
+async function deleteFile() {
+  if (!editor.path) return;
+
+  // Name what goes with it. The achievement count is the part that is easy to
+  // forget and impossible to undo by retyping the file's first line.
+  const bullets = (editor.doc?.data?.bullets || []).length;
+  const goes = bullets
+    ? ` and its ${bullets} achievement${bullets === 1 ? "" : "s"}`
+    : "";
+  if (!confirm(`Remove ${editor.path}${goes}?\n\nA copy is kept in the backups folder.`)) return;
+
+  $("delete-file").disabled = true;
+  setEditorMessage("");
+  try {
+    const response = await fetch("/api/profile/file", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, path: editor.path }),
+    });
+    if (!response.ok) throw new Error(await explain(response));
+    const result = await response.json();
+
+    // The open file no longer exists, so the editor cannot stay pointed at it.
+    const removed = editor.path;
+    editor.path = null;
+    editor.doc = null;
+    editor.saved = "";
+    restoreEditorShell();
+    // `loadFileList` renders as well as fetches, and the shell it draws into
+    // only exists again after the restore above.
+    await Promise.all([loadFileList(), loadProfiles(), loadProfileSummary()]);
+    setEditorMessage(`Removed ${removed}. A copy is kept at ${result.backup}`, true);
+  } catch (e) {
+    setEditorMessage(e.message, false);
+  } finally {
+    $("delete-file").disabled = false;
+  }
+}
+
 async function addEntry(role) {
   const name = prompt(role === "experience" ? "Employer name?" : "Project name?");
   if (!name || !name.trim()) return;
@@ -1860,13 +1973,24 @@ async function createProfile() {
   let name = "profile";
   for (let n = 2; taken.has(name); n += 1) name = `profile${n}`;
 
+  // Asked once, here, because it is the decision that is expensive to reverse:
+  // a copy of the example has to be emptied file by file before the profile
+  // describes you, and that is exactly the chore this prompt avoids.
+  const who = prompt(
+    "Your full name, as it should print on the resume.\n\n" +
+    "Leave blank and press OK to start from the worked example instead — " +
+    "a complete fake profile you can edit in place."
+  );
+  if (who === null) return;
+  const mode = who.trim() ? "empty" : "example";
+
   const button = $("create-from-example") || $("create-profile");
   if (button) { button.disabled = true; button.textContent = "Creating…"; }
   try {
     const response = await fetch("/api/profile/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, source: activeProfile }),
+      body: JSON.stringify({ name, source: activeProfile, mode, display_name: who.trim() }),
     });
     if (!response.ok) throw new Error(await explain(response));
     safeSet("resume-agent.profile", name);
@@ -1976,9 +2100,11 @@ function renderProposal(turn) {
       ? esc(item.payload.bullet?.canonical ?? "")
       : item.kind === "entry"
         ? (item.payload.bullets || []).map((b) => esc(b.canonical)).join(" · ")
-        : `${esc(item.payload.category ?? "")} · ${esc(item.payload.level ?? "")}`;
+        : item.kind === "deletion"
+          ? esc(item.payload.reason ?? "")
+          : `${esc(item.payload.category ?? "")} · ${esc(item.payload.level ?? "")}`;
     // Flagged items start unticked. The whole point is that you look at them.
-    return `<label class="prop-item">
+    return `<label class="prop-item${item.kind === "deletion" ? " removes" : ""}">
       <input type="checkbox" value="${esc(item.item_id)}"${item.flags.length ? "" : " checked"}>
       <span class="prop-body">
         <span class="prop-summary">${esc(item.summary)}</span>
@@ -1988,20 +2114,45 @@ function renderProposal(turn) {
     </label>`;
   }).join("");
 
+  // A proposal that removes things cannot be labelled "Add to my profile", and
+  // the count is worth saying out loud before the button is pressed.
+  const removals = turn.items.filter((i) => i.kind === "deletion").length;
+  const additions = turn.items.length - removals;
+  const heading = removals && !additions ? "Ready to remove"
+    : removals ? "Ready to apply" : "Ready to file";
+  const action = removals && !additions ? "Remove from my profile"
+    : removals ? "Apply these changes" : "Add to my profile";
+
+  // The fabrication warning is about text being written, so it has nothing to
+  // say about a proposal that only removes things — there is no prose in it to
+  // have traced anywhere. A removals-only card gets the consequence instead.
+  // "Says something you did not" is the fabrication warning, and it is the one
+  // that matters — but it is the wrong sentence for a card that only removes
+  // things, where a flag means "no such entry" rather than "invented".
+  const flagCopy = additions
+    ? ["One of these says something you did not. It is unticked; tick it only if it is true.",
+       "of these say something you did not. They are unticked; tick one only if it is true."]
+    : ["One of these names nothing in your profile. It is unticked; leave it that way.",
+       "of these name nothing in your profile. They are unticked; leave them that way."];
   const warning = turn.flagged
-    ? (turn.flagged === 1
-        ? "One of these says something you did not. It is unticked; tick it only if it is true."
-        : `${turn.flagged} of these say something you did not. They are unticked; ` +
-          "tick one only if it is true.")
-    : "Everything here traces back to what you wrote.";
+    ? (turn.flagged === 1 ? flagCopy[0] : `${turn.flagged} ${flagCopy[1]}`)
+    : additions
+      ? "Everything here traces back to what you wrote."
+      : "";
+  const removalNote = removals
+    ? `${warning ? " " : ""}` +
+      (removals === 1
+        ? "One item deletes a file — a copy is kept in the backups folder."
+        : `${removals} items delete files — a copy of each is kept in the backups folder.`)
+    : "";
 
   const card = chatLine("proposal", `
-    <h3>Ready to file</h3>
-    <p class="field-help">${esc(warning)}</p>
+    <h3>${esc(heading)}</h3>
+    <p class="field-help">${esc(warning + removalNote)}</p>
     ${rows}
     <div class="controls">
       <button class="row-add" data-act="none">Select none</button>
-      <button class="cta" data-act="apply">Add to my profile</button>
+      <button class="cta" data-act="apply">${esc(action)}</button>
     </div>`);
 
   card.querySelector('[data-act="none"]').addEventListener("click", () => {
@@ -2014,8 +2165,11 @@ function renderProposal(turn) {
 async function applyProposal(turnId, card) {
   const accept = [...card.querySelectorAll("input:checked")].map((i) => i.value);
   const button = card.querySelector('[data-act="apply"]');
+  // Restored verbatim on failure: the label depends on what the proposal holds,
+  // so a hardcoded "Add to my profile" would relabel a removal card on error.
+  const label = button.textContent;
   button.disabled = true;
-  button.textContent = "Adding\u2026";
+  button.textContent = "Working\u2026";
 
   try {
     const response = await fetch("/api/chat/apply", {
@@ -2036,7 +2190,7 @@ async function applyProposal(turnId, card) {
     editor.files = [];
   } catch (e) {
     button.disabled = false;
-    button.textContent = "Add to my profile";
+    button.textContent = label;
     card.insertAdjacentHTML("beforeend", `<div class="errors">${esc(e.message)}</div>`);
   }
 }
@@ -2058,6 +2212,7 @@ $("profile-select").addEventListener("change", async (e) => {
 function wireEditorControls() {
   $("editor-text").addEventListener("input", refreshEditorState);
   $("save-file").addEventListener("click", saveFile);
+  $("delete-file").addEventListener("click", deleteFile);
   $("raw-toggle").addEventListener("change", (e) => setRawMode(e.target.checked));
   // Tab inserts two spaces instead of leaving the field: the raw view is a YAML
   // editor, and indentation is the syntax.

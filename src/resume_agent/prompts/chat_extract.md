@@ -51,6 +51,15 @@ they did not mention is not.
    known.** Give it the casing it prints in — `PostgreSQL`, not `postgresql` —
    and add the spellings a job posting might use as `aliases`.
 
+9. **Removals name an id and nothing else.** When they ask for something to be
+   taken out, put its id in `deletions` — an entry id from their roles list, or a
+   name from their narratives list. Use only an id that appears there verbatim: a target matching
+   nothing is flagged, and guessing at a half-remembered name risks removing the
+   wrong job. If they asked for a whole category ("get rid of my projects"), list
+   every matching id rather than one standing for the group. If they asked to
+   remove something you cannot see, say so in `reply` and leave `deletions` empty.
+   Nothing is removed by you — each one becomes a button they have to press.
+
 ## What good looks like
 
 They said:
@@ -83,6 +92,7 @@ message, in plain language — what you added and anything you deliberately left
 out because they had not said it. This is shown above your suggestions.
 
 Put genuinely new roles in `entries`, achievements for roles they already have in
-`bullets` with the right `entry_id`, and new technologies in `skills`. Leave any
-list empty rather than padding it. If they said nothing extractable — a question,
-a greeting — return all three empty and say so in `reply`.
+`bullets` with the right `entry_id`, new technologies in `skills`, and anything
+they asked to have removed in `deletions`. Leave any list empty rather than
+padding it. If they said nothing extractable — a question, a greeting — return
+them all empty and say so in `reply`.

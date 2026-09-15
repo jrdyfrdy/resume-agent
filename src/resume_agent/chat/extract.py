@@ -40,10 +40,12 @@ from resume_agent.grounding.numbers import extract_numbers, unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
 from resume_agent.kb.forms import (
     create_entry,
+    delete_document,
     next_bullet_id,
     read_document,
     write_document,
 )
+from resume_agent.kb.loader import NARRATIVES_DIR
 from resume_agent.llm import build_chat_model, load_prompt, structured_output
 from resume_agent.models.profile import Profile
 
@@ -114,6 +116,24 @@ class ProposedSkill(BaseModel):
     level: Literal["expert", "working", "familiar"] = "working"
 
 
+class ProposedDeletion(BaseModel):
+    """Something the user asked to have taken out.
+
+    Only an id, never content: the model names an existing job, project or
+    narrative and nothing it writes reaches disk. That makes this the one
+    direction where fabrication is structurally impossible -- there is no
+    sentence to invent, and an id that matches nothing is flagged rather than
+    guessed at.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    target_id: str = Field(
+        description="An entry id (exp_*/prj_*) or a narrative name, exactly as given."
+    )
+    reason: str = Field(default="", description="Why, in the user's words.")
+
+
 class ExtractionFields(BaseModel):
     """The structured-output schema. One call returns all of it."""
 
@@ -126,6 +146,7 @@ class ExtractionFields(BaseModel):
     entries: list[ProposedEntry] = Field(default_factory=list)
     bullets: list[ProposedBulletForEntry] = Field(default_factory=list)
     skills: list[ProposedSkill] = Field(default_factory=list)
+    deletions: list[ProposedDeletion] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +170,7 @@ class Item(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_id: str
-    kind: Literal["entry", "bullet", "skill"]
+    kind: Literal["entry", "bullet", "skill", "deletion"]
     summary: str
     payload: dict
     flags: list[Flag] = Field(default_factory=list)
@@ -184,11 +205,15 @@ def extract(
         for entry in profile.entries()
     )
     vocabulary = "\n".join(sorted({skill.canonical for skill in profile.skills}))
+    # Listed for the same reason roles are: a deletion may only name something
+    # the model can see, so a narrative it is never shown can never be removed.
+    narratives = "\n".join(f"- {narrative.name}" for narrative in profile.narratives)
 
     result = structured.invoke([
         SystemMessage(content=load_prompt(PROMPT_NAME)),
         HumanMessage(content=(
             f"<existing_roles>\n{known or '(none yet)'}\n</existing_roles>\n\n"
+            f"<existing_narratives>\n{narratives or '(none yet)'}\n</existing_narratives>\n\n"
             f"<known_technologies>\n{vocabulary or '(none yet)'}\n</known_technologies>\n\n"
             f"<what_the_user_said>\n{message.strip()}\n</what_the_user_said>"
         )),
@@ -270,7 +295,49 @@ def build_proposal(
             flags=flags,
         ))
 
+    for index, deletion in enumerate(fields.deletions):
+        items.append(_deletion_item(f"deletion-{index}", deletion, profile))
+
     return Proposal(reply=fields.reply.strip(), items=items)
+
+
+def _deletion_item(item_id: str, deletion: ProposedDeletion, profile: Profile) -> Item:
+    """Resolve a target to something the user can weigh before clicking.
+
+    The gate here is *existence*, not invention. Nothing the model wrote gets
+    written, so the question is not "did you say this" but "does this exist and
+    do you know what goes with it" -- hence the achievement count in the summary.
+    An id matching nothing is flagged and still shown, because the useful answer
+    is almost always "you meant this other one" and only the user can say which.
+    """
+    target = deletion.target_id.strip()
+
+    entry = next((e for e in profile.entries() if e.id == target), None)
+    if entry is not None:
+        label = getattr(entry, "org", None) or getattr(entry, "name", "")
+        count = len(entry.bullets)
+        summary = f"Remove {entry.id} ({label})"
+        if count:
+            summary += f" — {count} achievement{'s' if count != 1 else ''} go with it"
+        return Item(item_id=item_id, kind="deletion", summary=summary,
+                    payload=deletion.model_dump())
+
+    if any(narrative.name == target for narrative in profile.narratives):
+        return Item(item_id=item_id, kind="deletion",
+                    summary=f"Remove the narrative “{target}”",
+                    payload=deletion.model_dump())
+
+    return Item(
+        item_id=item_id,
+        kind="deletion",
+        summary=f"Remove {target}",
+        payload=deletion.model_dump(),
+        flags=[Flag(
+            item_id=item_id,
+            kind="unknown_entry",
+            detail=f"Nothing called {target!r} exists in this profile.",
+        )],
+    )
 
 
 def _check_bullet(item_id: str, bullet: ProposedBullet, message: str) -> list[Flag]:
@@ -342,23 +409,47 @@ def apply(
 ) -> list[str]:
     """Write the accepted items. Returns a line per change, for the transcript.
 
-    **Skills go first.** There is no transactional multi-file write here -- each
-    call to `write_document` validates the whole directory on its own -- so a
-    bullet naming a new technology must not land before the skill that makes it
-    resolvable, or the intermediate state fails to load and the save is refused.
+    **Skills go first, deletions last.** There is no transactional multi-file
+    write here -- each call to `write_document` validates the whole directory on
+    its own -- so no intermediate state may be invalid. A bullet naming a new
+    technology must not land before the skill that makes it resolvable, and a
+    removal must not land before an addition that might depend on what it takes
+    away. Both ends of the order exist for the one reason.
     """
     wanted = {item.item_id for item in proposal.items} & set(accepted)
     items = [item for item in proposal.items if item.item_id in wanted]
+    order = {"skill": 0, "entry": 1, "bullet": 2, "deletion": 3}
     done: list[str] = []
 
-    for item in sorted(items, key=lambda i: {"skill": 0, "entry": 1, "bullet": 2}[i.kind]):
+    for item in sorted(items, key=lambda i: order[i.kind]):
         if item.kind == "skill":
             done.append(_add_skill(profile_dir, item))
         elif item.kind == "entry":
             done.append(_add_entry(profile_dir, item))
-        else:
+        elif item.kind == "bullet":
             done.append(_add_bullet(profile_dir, item))
+        else:
+            done.append(_delete_target(profile_dir, item))
     return done
+
+
+def _delete_target(profile_dir: Path, item: Item) -> str:
+    """Remove a whole entry or narrative file.
+
+    Whole files only. Individual skill rows are deliberately out of scope: they
+    are the allow-list every other file resolves against, so dropping one can
+    invalidate a bullet somewhere else -- `delete_document` would roll the change
+    back, but offering an action that reliably fails is worse than not offering it.
+    """
+    target = item.payload["target_id"].strip()
+    narrative = Path(profile_dir) / NARRATIVES_DIR / f"{target}.md"
+    relative = (
+        f"{NARRATIVES_DIR}/{target}.md"
+        if narrative.is_file()
+        else _file_for_entry(profile_dir, target)
+    )
+    delete_document(profile_dir, relative)
+    return f"removed {target}"
 
 
 def _add_skill(profile_dir: Path, item: Item) -> str:

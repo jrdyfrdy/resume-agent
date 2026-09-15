@@ -31,6 +31,24 @@ _ASKS = re.compile(
     re.IGNORECASE,
 )
 
+# An instruction to take something *out* of the profile. Checked before `_ASKS`,
+# because the polite form of a command is shaped exactly like a question --
+# "Can you remove my narratives?" ends in a question mark and opens with a word
+# `_ASKS` matches, but it is not asking anything.
+#
+# The subject is what separates the two, so the optional prefix requires "you":
+# "can you delete X" is a command, "should I delete X" is a genuine question and
+# falls through to `advise`, which is where someone weighing a decision wants to
+# land. Anchored at the start so "the exporter deletes stale rows" -- a sentence
+# describing work, not requesting one -- is never read as an instruction.
+_MUTATES = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?)?"
+    r"(?:go\s+ahead\s+and\s+)?"
+    r"(?:remove|delete|drop|clear|erase|wipe|get\s+rid\s+of|take\s+out)\b",
+    re.IGNORECASE,
+)
+
 
 @dataclass
 class Turn:
@@ -111,10 +129,17 @@ def classify(message: str) -> str:
     The bias is towards `advise`, because the failure modes are asymmetric.
     Treating dictation as a question wastes a turn; treating a question as
     dictation puts a proposal in front of someone who did not ask for one.
+
+    The one exception to that bias is a command to remove something. It has to
+    reach `extract`, because `extract` is the only half that can produce a
+    proposal -- and a removal request answered by `advise` produced the worst
+    outcome this feature has had: prose agreeing to do it, and nothing done.
     """
     text = message.strip()
     if not text:
         return "advise"
+    if _MUTATES.match(text):
+        return "extract"
     if text.endswith("?") or _ASKS.match(text):
         return "advise"
 

@@ -246,6 +246,11 @@ class CreateProfileRequest(BaseModel):
     # on disk, so a slash or a dot-dot must never reach the filesystem layer.
     name: str = Field(default="profile", pattern=r"^[A-Za-z0-9._-]{1,64}$")
     source: str = "profile.example"
+    # "empty" is the default because a profile you mean to use should not begin
+    # as someone else's career; "example" stays for trying the tool out.
+    mode: Literal["empty", "example"] = "empty"
+    # Only used by "empty" -- the copy takes its identity from the source.
+    display_name: str = Field(default="", max_length=200)
 
 
 class ChatRequest(BaseModel):

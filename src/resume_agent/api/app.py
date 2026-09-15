@@ -77,6 +77,7 @@ from resume_agent.kb.forms import (
 from resume_agent.kb.loader import ProfileLoadError, load_profile
 from resume_agent.kb.writer import (
     ProfileWriteError,
+    create_empty_profile,
     read_profile_file,
     relative_profile_files,
     resolve_editable_path,
@@ -396,15 +397,19 @@ def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
 
     @app.post("/api/profile/create", response_model=ProfileFileList, status_code=201)
     async def create_profile(request: CreateProfileRequest) -> ProfileFileList:
-        """Copy an existing profile to a new directory.
+        """Start a new profile directory, empty or copied from the example.
 
-        The answer to "where does my knowledge base go", made a button: the
-        first step becomes a working profile rather than seven empty files.
+        The answer to "where does my knowledge base go", made a button. It
+        defaults to empty: copying the example produces a directory that loads
+        straight away, but everything in it then has to be deleted before the
+        profile describes its actual owner.
         """
-        source = resolve_profile_dir(request.source)
         target = Path.cwd() / request.name
         try:
-            scaffold_profile(source, target)
+            if request.mode == "empty":
+                create_empty_profile(target, name=request.display_name)
+            else:
+                scaffold_profile(resolve_profile_dir(request.source), target)
             return ProfileFileList(
                 profile=request.name, files=relative_profile_files(target)
             )
