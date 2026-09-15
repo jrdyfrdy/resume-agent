@@ -248,6 +248,62 @@ class CreateProfileRequest(BaseModel):
     source: str = "profile.example"
 
 
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    message: str = Field(min_length=1, max_length=20_000)
+
+
+class ChatCreated(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    turn_id: str
+    # Which of the two things this message was taken to be, so the page can say
+    # "reading what you wrote" rather than showing a cursor that never types.
+    intent: str
+
+
+class ChatEvent(BaseModel):
+    """One line of a chat turn's stream.
+
+    Separate from `NodeEvent` rather than widening its `Literal`: a run reports
+    discrete stage boundaries, a chat turn reports prose arriving a fragment at
+    a time, and `extra="forbid"` makes a union of the two awkward to read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["token", "status", "proposal", "error", "done"]
+    text: str = ""
+
+
+class ChatTurnView(BaseModel):
+    """A settled turn, with whatever it produced."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn_id: str
+    status: str
+    intent: str
+    message: str
+    reply: str = ""
+    # Present only for a dictation turn. Held in memory until accepted -- a
+    # proposal is a suggestion, not a change.
+    items: list[dict] = Field(default_factory=list)
+    flagged: int = 0
+    applied: list[str] = Field(default_factory=list)
+    error: str | None = None
+
+
+class ApplyProposalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    turn_id: str
+    accept: list[str] = Field(default_factory=list)
+
+
 class RunSummary(BaseModel):
     """The finished run, as the page needs it."""
 

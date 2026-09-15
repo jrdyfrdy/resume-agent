@@ -148,8 +148,12 @@
   .tabs button[aria-selected="true"] {
     color: var(--accent); border-bottom-color: var(--accent); background: var(--paper);
   }
+  /* --ink-3, not --ink-4. This is a number you are meant to read, and on the
+     tab strip's darker ground --ink-4 measures 2.6:1. It escaped the earlier
+     sweep because the badge is empty until the tracker has rows, so there was
+     no text node to check. */
   .tabs .count {
-    font-size: 12px; color: var(--ink-4); margin-left: 6px;
+    font-size: 12px; color: var(--ink-3); margin-left: 6px;
   }
 
   /* ------------------------------------------------------------------ hero */
@@ -365,6 +369,53 @@
   .modes button + button { border-left: 1px solid var(--rule); }
   .modes button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
+  /* --- chat -------------------------------------------------------------- */
+  .chat-log { display: flex; flex-direction: column; gap: 18px; margin-bottom: 22px; }
+  .chat-log:empty { display: none; }
+  .said {
+    align-self: flex-end; max-width: 78%; background: var(--paper-2);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 10px 14px;
+    font-size: 14px; white-space: pre-wrap;
+  }
+  .replied { max-width: 74ch; font-size: 14.5px; line-height: 1.65; }
+  .replied p { margin: 0 0 10px; }
+  .replied p:last-child { margin-bottom: 0; }
+  /* A caret while the answer is still arriving, so a pause reads as thinking
+     rather than as the page having stopped. */
+  .replied.typing::after {
+    content: ""; display: inline-block; width: 7px; height: 15px;
+    background: var(--accent); margin-left: 2px; vertical-align: -2px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .replied.typing::after { animation: blink 1.1s step-end infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+  }
+  .thinking { font-size: 13.5px; color: var(--ink-3); }
+
+  .proposal { border: 1px solid var(--rule); border-radius: 6px; padding: 16px; }
+  .proposal h3 { margin-bottom: 4px; }
+  .proposal .field-help { margin-bottom: 14px; }
+  .prop-item {
+    border-top: 1px solid var(--rule); padding: 11px 0;
+    display: flex; gap: 11px; align-items: flex-start;
+  }
+  .prop-item:first-of-type { border-top: 0; }
+  .prop-item input { margin: 3px 0 0; accent-color: var(--accent); flex: none; }
+  .prop-body { flex: 1; min-width: 0; }
+  .prop-summary { font-size: 14px; }
+  .prop-detail { font: 12.5px/1.6 var(--mono); color: var(--ink-3); margin-top: 5px; }
+  .prop-flag {
+    margin-top: 6px; padding: 7px 10px; border-left: 2px solid var(--bad);
+    background: var(--accent-wash); font-size: 13px; color: var(--ink-2);
+  }
+  .proposal .controls { margin-top: 16px; }
+
+  .chat-composer textarea {
+    width: 100%; resize: vertical; padding: 12px 14px;
+    border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink); font: 14px/1.6 var(--sans);
+  }
+
   /* --- the editor ------------------------------------------------------- */
   .editor { display: grid; grid-template-columns: minmax(170px, 210px) 1fr; gap: 20px; align-items: start; }
   @media (max-width: 780px) { .editor { grid-template-columns: 1fr; } }
@@ -552,6 +603,7 @@
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Tailor</button>
       <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">Profile</button>
+      <button role="tab" id="tab-chat"    aria-controls="panel-chat"    aria-selected="false" data-tab="chat"    tabindex="-1">Chat</button>
       <button role="tab" id="tab-guide"   aria-controls="panel-guide"   aria-selected="false" data-tab="guide"   tabindex="-1">Guide</button>
       <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
     </nav>
@@ -690,6 +742,34 @@
                 Every save keeps a timestamped backup.
               </p>
             </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================================================== CHAT -->
+  <div role="tabpanel" id="panel-chat" aria-labelledby="tab-chat" tabindex="0" class="hidden">
+    <main style="padding-top:26px">
+      <section class="panel">
+        <p class="panel-title">Talk about your knowledge base</p>
+        <p class="panel-lede">
+          Ask what is weak about it, or just describe what you have been doing and let it
+          file the details for you. Anything it extracts is shown here first — nothing is
+          written until you accept it.
+        </p>
+
+        <div id="chat-log" class="chat-log" aria-live="polite" aria-label="Conversation"></div>
+
+        <div class="chat-composer">
+          <label class="sr-only" for="chat-input">Message</label>
+          <textarea id="chat-input" rows="3"
+            placeholder="What should I improve? &#10;&#10;— or —&#10;&#10;I spent two years at Kestrel on the payments team. Rewrote the nightly export so it streams instead of buffering, which stopped the 3am pages."></textarea>
+          <div class="controls">
+            <span class="field-help" id="chat-hint">
+              Questions get an answer. Anything you describe gets filed, for you to review.
+            </span>
+            <button class="cta" id="chat-send">Send</button>
           </div>
         </div>
       </section>
@@ -854,7 +934,7 @@ const PHASES = [
   { name: "Close",   nodes: ["human_review", "revision_cap", "finalize"] },
 ];
 
-const TABS = ["tailor", "profile", "guide", "history"];
+const TABS = ["tailor", "profile", "chat", "guide", "history"];
 
 let source = null;
 let activeProfile = "profile.example";
@@ -1800,6 +1880,167 @@ async function createProfile() {
   }
 }
 
+/* ----------------------------------------------------------------- chat */
+
+let chatStream = null;
+
+function chatLine(cls, html) {
+  const el = document.createElement("div");
+  el.className = cls;
+  el.innerHTML = html;
+  $("chat-log").appendChild(el);
+  el.scrollIntoView({ block: "nearest" });
+  return el;
+}
+
+function paragraphs(text) {
+  return text.split(/\n{2,}/).map((p) => `<p>${esc(p)}</p>`).join("");
+}
+
+async function sendChat() {
+  const message = $("chat-input").value.trim();
+  if (!message) { $("chat-input").focus(); return; }
+
+  $("chat-send").disabled = true;
+  $("chat-input").value = "";
+  chatLine("said", esc(message));
+  if (chatStream) chatStream.close();
+
+  let response;
+  try {
+    response = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, message }),
+    });
+    if (!response.ok) throw new Error(await explain(response));
+  } catch (e) {
+    chatLine("errors", esc(e.message));
+    $("chat-send").disabled = false;
+    return;
+  }
+
+  const { turn_id, intent } = await response.json();
+  // Extraction is one structured call, so there is nothing to stream -- say what
+  // is happening instead of showing a caret that never types.
+  const pending = intent === "extract"
+    ? chatLine("thinking", "reading what you wrote\u2026")
+    : chatLine("replied typing", "");
+
+  chatStream = new EventSource(`/api/chat/${turn_id}/events`);
+  chatStream.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+    if (event.kind === "token") pending.innerHTML = paragraphs(pendingText(pending) + event.text);
+    if (event.kind === "status") pending.textContent = event.text;
+    if (event.kind === "error") { pending.className = "errors"; pending.textContent = event.text; }
+  };
+  chatStream.addEventListener("end", async () => {
+    chatStream.close();
+    pending.classList.remove("typing");
+    await settleTurn(turn_id, pending);
+    $("chat-send").disabled = false;
+    $("chat-input").focus();
+  });
+  chatStream.onerror = () => {
+    chatStream.close();
+    pending.classList.remove("typing");
+    $("chat-send").disabled = false;
+  };
+}
+
+/* The streamed text, recovered from the DOM so a re-render of paragraphs does
+   not need a parallel buffer that could drift from what is on screen. */
+function pendingText(el) {
+  return [...el.querySelectorAll("p")].map((p) => p.textContent).join("\n\n");
+}
+
+async function settleTurn(turnId, pending) {
+  const turn = await (await fetch(`/api/chat/${turnId}`)).json();
+
+  if (turn.status === "failed") {
+    pending.className = "errors";
+    pending.textContent = turn.error || "that turn failed";
+    return;
+  }
+  pending.className = "replied";
+  pending.innerHTML = paragraphs(turn.reply || "(nothing to say)");
+
+  if (turn.items.length) renderProposal(turn);
+}
+
+function renderProposal(turn) {
+  const rows = turn.items.map((item) => {
+    const flags = item.flags.map((f) =>
+      `<div class="prop-flag">${esc(f.detail)}</div>`).join("");
+    const detail = item.kind === "bullet"
+      ? esc(item.payload.bullet?.canonical ?? "")
+      : item.kind === "entry"
+        ? (item.payload.bullets || []).map((b) => esc(b.canonical)).join(" · ")
+        : `${esc(item.payload.category ?? "")} · ${esc(item.payload.level ?? "")}`;
+    // Flagged items start unticked. The whole point is that you look at them.
+    return `<label class="prop-item">
+      <input type="checkbox" value="${esc(item.item_id)}"${item.flags.length ? "" : " checked"}>
+      <span class="prop-body">
+        <span class="prop-summary">${esc(item.summary)}</span>
+        ${detail ? `<div class="prop-detail">${detail}</div>` : ""}
+        ${flags}
+      </span>
+    </label>`;
+  }).join("");
+
+  const warning = turn.flagged
+    ? (turn.flagged === 1
+        ? "One of these says something you did not. It is unticked; tick it only if it is true."
+        : `${turn.flagged} of these say something you did not. They are unticked; ` +
+          "tick one only if it is true.")
+    : "Everything here traces back to what you wrote.";
+
+  const card = chatLine("proposal", `
+    <h3>Ready to file</h3>
+    <p class="field-help">${esc(warning)}</p>
+    ${rows}
+    <div class="controls">
+      <button class="row-add" data-act="none">Select none</button>
+      <button class="cta" data-act="apply">Add to my profile</button>
+    </div>`);
+
+  card.querySelector('[data-act="none"]').addEventListener("click", () => {
+    card.querySelectorAll("input").forEach((i) => { i.checked = false; });
+  });
+  card.querySelector('[data-act="apply"]').addEventListener("click", () =>
+    applyProposal(turn.turn_id, card));
+}
+
+async function applyProposal(turnId, card) {
+  const accept = [...card.querySelectorAll("input:checked")].map((i) => i.value);
+  const button = card.querySelector('[data-act="apply"]');
+  button.disabled = true;
+  button.textContent = "Adding\u2026";
+
+  try {
+    const response = await fetch("/api/chat/apply", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, turn_id: turnId, accept }),
+    });
+    if (!response.ok) throw new Error(await explain(response));
+    const turn = await response.json();
+
+    card.className = "ok-note";
+    card.textContent = turn.applied.length
+      ? `Done \u2014 ${turn.applied.join("; ")}. Every change kept a backup.`
+      : "Nothing selected, so nothing was written.";
+
+    // The profile changed, so everything derived from it is stale.
+    await Promise.all([loadProfiles(), loadProfileSummary()]);
+    editor.files = [];
+  } catch (e) {
+    button.disabled = false;
+    button.textContent = "Add to my profile";
+    card.insertAdjacentHTML("beforeend", `<div class="errors">${esc(e.message)}</div>`);
+  }
+}
+
 /* ----------------------------------------------------------------- init */
 
 $("run").addEventListener("click", start);
@@ -1833,6 +2074,12 @@ function wireEditorControls() {
 }
 wireEditorControls();
 $("new-profile").addEventListener("click", createProfile);
+$("chat-send").addEventListener("click", sendChat);
+// Ctrl/Cmd+Enter sends, matching the posting box on the Tailor tab. Plain Enter
+// makes a newline, because dictation is naturally multi-paragraph.
+$("chat-input").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); sendChat(); }
+});
 $("profile-modes").querySelectorAll("button").forEach((button) => {
   button.addEventListener("click", () => setProfileMode(button.dataset.mode));
 });

@@ -37,6 +37,11 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from resume_agent.api.models import (
     ApplicationSummary,
+    ApplyProposalRequest,
+    ChatCreated,
+    ChatEvent,
+    ChatRequest,
+    ChatTurnView,
     CreateEntryRequest,
     CreateProfileRequest,
     DeleteFileRequest,
@@ -56,6 +61,10 @@ from resume_agent.api.models import (
     build_profile_detail,
     summarise_state,
 )
+from resume_agent.chat.advise import advise
+from resume_agent.chat.extract import apply as apply_proposal_items
+from resume_agent.chat.extract import extract
+from resume_agent.chat.session import Registry
 from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.forms import (
@@ -216,14 +225,17 @@ class Run:
     history: list[NodeEvent] = field(default_factory=list)
 
 
-def create_app(graph_factory=build_graph) -> FastAPI:
+def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
     """Build the app.
 
-    `graph_factory` is injectable so the tests can drive every endpoint with a
-    fake graph -- no API key, no network, no compiler.
+    `graph_factory` and `chat_model_factory` are injectable so the tests can
+    drive every endpoint with fakes -- no API key, no network, no compiler.
     """
     app = FastAPI(title="resume-agent", docs_url="/api/docs")
     runs: dict[str, Run] = {}
+    # Conversations live as long as the process, like `runs`. A transcript is
+    # not career data; what you accepted out of it is, and that is on disk.
+    chats = Registry()
 
     # -- read-only ---------------------------------------------------------
 
@@ -413,6 +425,62 @@ def create_app(graph_factory=build_graph) -> FastAPI:
             for row in list_applications(limit=limit)
         ]
 
+    # -- chat ---------------------------------------------------------------
+    #
+    # Same shape as a run: start it detached, stream its append-only event log
+    # by index, then fetch the settled turn. A dictation turn ends holding a
+    # proposal, which is a suggestion in memory -- `/api/chat/apply` is the only
+    # thing that writes, and it goes through the form layer like everything else.
+
+    @app.post("/api/chat", response_model=ChatCreated, status_code=202)
+    async def start_chat(request: ChatRequest) -> ChatCreated:
+        directory = resolve_profile_dir(request.profile)
+        try:
+            load_profile(directory)
+        except ProfileLoadError as exc:
+            # A broken profile is exactly when you most want to ask about it, so
+            # this says which file rather than failing silently.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        turn = chats.start(request.profile, request.message)
+        asyncio.create_task(_chat_turn(turn, directory, chats, chat_model_factory))
+        return ChatCreated(turn_id=turn.turn_id, intent=turn.intent)
+
+    @app.get("/api/chat/{turn_id}/events")
+    async def stream_chat(turn_id: str) -> StreamingResponse:
+        turn = chats.get(turn_id)
+        if turn is None:
+            raise HTTPException(status_code=404, detail="no such turn")
+        return StreamingResponse(
+            _chat_sse(turn),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    @app.get("/api/chat/{turn_id}", response_model=ChatTurnView)
+    async def get_chat_turn(turn_id: str) -> ChatTurnView:
+        turn = chats.get(turn_id)
+        if turn is None:
+            raise HTTPException(status_code=404, detail="no such turn")
+        return _turn_view(turn)
+
+    @app.post("/api/chat/apply", response_model=ChatTurnView)
+    async def apply_proposal(request: ApplyProposalRequest) -> ChatTurnView:
+        directory = resolve_writable_profile_dir(request.profile)
+        turn = chats.get(request.turn_id)
+        if turn is None or turn.proposal is None:
+            raise HTTPException(status_code=404, detail="no proposal for that turn")
+
+        try:
+            turn.applied = apply_proposal_items(turn.proposal, directory, request.accept)
+        except (ProfileWriteError, ValueError) as exc:
+            # Includes the whole-directory validation refusing the write, which
+            # is a normal outcome worth reading rather than a crash.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        logger.info("chat applied %d item(s) to %s", len(turn.applied), request.profile)
+        return _turn_view(turn)
+
     # -- running -----------------------------------------------------------
 
     @app.post("/api/runs", response_model=RunCreated, status_code=202)
@@ -519,6 +587,78 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
         run.status = "failed"
         run.summary = RunSummary(run_id=run.run_id, status="failed", errors=[str(exc)])
         emit(NodeEvent(kind="error", name="failed", detail=str(exc)))
+
+
+async def _chat_turn(turn, profile_dir: Path, chats: Registry, model_factory) -> None:
+    """Run one chat turn, appending to its own event log.
+
+    Two shapes, decided before the call: advice streams prose as it arrives,
+    extraction is a single structured call that ends in a proposal. Streaming
+    partial JSON would show the user something they should never see.
+    """
+    try:
+        profile = load_profile(profile_dir)
+
+        if turn.intent == "extract":
+            turn.emit("status", text="reading what you wrote…")
+            proposal = extract(
+                turn.message, profile, llm=model_factory() if model_factory else None
+            )
+            turn.proposal = proposal
+            turn.reply = proposal.reply
+            turn.emit("proposal")
+        else:
+            model = model_factory() if model_factory else None
+            async for fragment in advise(
+                turn.message,
+                profile,
+                chats.conversation(turn.profile).transcript()[:-2],
+                llm=model,
+            ):
+                turn.reply += fragment
+                turn.emit("token", text=fragment)
+
+        turn.status = "done"
+    except Exception as exc:  # noqa: BLE001 - the page must be told, not left waiting
+        logger.exception("chat turn %s failed", turn.turn_id)
+        turn.status = "failed"
+        turn.error = str(exc)
+        turn.emit("error", text=str(exc))
+
+
+async def _chat_sse(turn) -> AsyncIterator[str]:
+    """Same index-read design as `_sse`, terminating with the turn.
+
+    Polled rather than pushed, at the same interval: a token arriving up to a
+    tenth of a second late still reads as typing, and a poll needs no condition
+    variable to get right.
+    """
+    sent = 0
+    while True:
+        while sent < len(turn.events):
+            yield f"data: {ChatEvent(**turn.events[sent]).model_dump_json()}\n\n"
+            sent += 1
+
+        if turn.status in ("done", "failed"):
+            yield "event: end\ndata: {}\n\n"
+            return
+
+        await asyncio.sleep(POLL_INTERVAL_S)
+
+
+def _turn_view(turn) -> ChatTurnView:
+    proposal = turn.proposal
+    return ChatTurnView(
+        turn_id=turn.turn_id,
+        status=turn.status,
+        intent=turn.intent,
+        message=turn.message,
+        reply=turn.reply,
+        items=[item.model_dump() for item in (proposal.items if proposal else [])],
+        flagged=len(proposal.flagged()) if proposal else 0,
+        applied=turn.applied,
+        error=turn.error,
+    )
 
 
 async def _sse(run: Run) -> AsyncIterator[str]:

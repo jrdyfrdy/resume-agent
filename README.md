@@ -168,6 +168,37 @@ count of how many achievements depend on it.
 A **Raw file** switch still opens the underlying YAML or Markdown, for the cases
 a form cannot express. You should not need it.
 
+### Talking to it instead
+
+The **Chat** tab does two things. Ask it something — *"what is the weakest thing
+about my knowledge base?"* — and it answers from an audit computed off your
+profile, not from impressions: which achievements record no numbers, which themes
+carry more than the three that can ever reach a page together, which declared
+skills nothing evidences. Nothing else in the tool tells you any of that, because
+every other surface needs a job posting first.
+
+Or just describe what you have been doing, in whatever shape it comes out, and it
+files the details for you:
+
+> I spent a while at Halvorsen on the nightly export. It buffered everything in
+> memory and fell over, so I rewrote it to stream through a queue and it stopped
+> paging us at 3am.
+
+**Nothing is written until you accept it.** You get a card listing what it took
+from that — here, one achievement attached to the right role — and you tick what
+should land.
+
+The thing that makes this safe to have at all: everywhere else in this tool the
+model is *constrained by* your profile, but here it would be authoring it. So the
+same grounding check that guards generated resume text runs one level up, with
+**your message as the source**. A number or a technology in the proposal that you
+did not actually say is flagged in red and left unticked. If it says "a queue",
+it cannot quietly become "Kafka" — not even though Kafka is in your skills, since
+that records having used it *somewhere*, not here.
+
+Accepted items go through the same form layer as everything else, so they inherit
+the validation, the backup and the comment preservation.
+
 Point any command at it with `--profile profile`, or pick it from the dropdown
 on the Profile tab, which is remembered between visits.
 
