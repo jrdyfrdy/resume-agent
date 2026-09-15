@@ -37,19 +37,32 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
 from resume_agent.api.models import (
     ApplicationSummary,
+    CreateProfileRequest,
     NodeEvent,
     ProfileDetail,
+    ProfileFile,
+    ProfileFileList,
     ProfileOption,
     ProfileSummary,
     RunCreated,
     RunRequest,
     RunSummary,
+    SaveFileRequest,
+    SaveResult,
     build_profile_detail,
     summarise_state,
 )
 from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.loader import ProfileLoadError, load_profile
+from resume_agent.kb.writer import (
+    ProfileWriteError,
+    read_profile_file,
+    relative_profile_files,
+    resolve_editable_path,
+    scaffold_profile,
+    write_profile_file,
+)
 from resume_agent.latex.compile import find_compiler
 from resume_agent.llm import (
     PROVIDER_ENV_VAR,
@@ -83,6 +96,28 @@ DEFAULT_PROFILE = "profile.example"
 # The file whose absence means "this directory is not a knowledge base". Chosen
 # because it is required and is the first thing `load_profile` reads.
 PROFILE_MARKER = "identity.yaml"
+
+
+def resolve_profile_dir(name: str, root: Path | None = None) -> Path:
+    """Turn a profile name from the browser into a directory, or refuse.
+
+    `profile` arrives as a query parameter, and until now it went straight into
+    `load_profile(Path(profile))`. Read-only that was merely sloppy. With a save
+    endpoint in the same app it is directory traversal: `?profile=../..` would
+    let the page choose where writes land.
+
+    The allow-list is `discover_profiles()` -- the same directories the picker
+    offers -- so the API can only ever touch something the UI could name.
+    """
+    known = {option.name for option in discover_profiles(root)}
+    if name not in known:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unknown profile {name!r}. Available: {', '.join(sorted(known)) or 'none'}"
+            ),
+        )
+    return (root or Path.cwd()) / name
 
 
 def discover_profiles(root: Path | None = None) -> list[ProfileOption]:
@@ -160,8 +195,9 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.get("/api/profile", response_model=ProfileSummary)
     async def profile_summary(profile: str = DEFAULT_PROFILE) -> ProfileSummary:
+        directory = resolve_profile_dir(profile)
         try:
-            loaded = load_profile(Path(profile))
+            loaded = load_profile(directory)
         except ProfileLoadError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -194,11 +230,72 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.get("/api/profile/detail", response_model=ProfileDetail)
     async def profile_detail(profile: str = DEFAULT_PROFILE) -> ProfileDetail:
+        directory = resolve_profile_dir(profile)
         try:
-            loaded = load_profile(Path(profile))
+            loaded = load_profile(directory)
         except ProfileLoadError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return build_profile_detail(profile, loaded)
+
+    # -- editing -----------------------------------------------------------
+    #
+    # Writes go through `kb/writer.py` and nothing else. It owns path
+    # containment, whole-directory validation and the pre-write backup; this
+    # layer only translates its errors into status codes.
+
+    @app.get("/api/profile/files", response_model=ProfileFileList)
+    async def profile_files(profile: str = DEFAULT_PROFILE) -> ProfileFileList:
+        directory = resolve_profile_dir(profile)
+        try:
+            return ProfileFileList(profile=profile, files=relative_profile_files(directory))
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/profile/file", response_model=ProfileFile)
+    async def profile_file(path: str, profile: str = DEFAULT_PROFILE) -> ProfileFile:
+        directory = resolve_profile_dir(profile)
+        try:
+            return ProfileFile(
+                profile=profile, path=path, text=read_profile_file(directory, path)
+            )
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.put("/api/profile/file", response_model=SaveResult)
+    async def save_profile_file(request: SaveFileRequest) -> SaveResult:
+        directory = resolve_profile_dir(request.profile)
+        try:
+            resolve_editable_path(directory, request.path)
+        except ProfileWriteError as exc:
+            # A path the editor should never have sent: a bug, not bad YAML.
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        try:
+            backup = write_profile_file(directory, request.path, request.text)
+        except ProfileWriteError as exc:
+            # Invalid content is an ordinary part of editing YAML, so it is a
+            # result rather than an error status. The file on disk is unchanged.
+            return SaveResult(ok=False, error=str(exc))
+
+        logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
+        return SaveResult(ok=True, backup=str(backup))
+
+    @app.post("/api/profile/create", response_model=ProfileFileList, status_code=201)
+    async def create_profile(request: CreateProfileRequest) -> ProfileFileList:
+        """Copy an existing profile to a new directory.
+
+        The answer to "where does my knowledge base go", made a button: the
+        first step becomes a working profile rather than seven empty files.
+        """
+        source = resolve_profile_dir(request.source)
+        target = Path.cwd() / request.name
+        try:
+            scaffold_profile(source, target)
+            return ProfileFileList(
+                profile=request.name, files=relative_profile_files(target)
+            )
+        except ProfileWriteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/applications", response_model=list[ApplicationSummary])
     async def applications(limit: int = 20) -> list[ApplicationSummary]:
@@ -218,6 +315,11 @@ def create_app(graph_factory=build_graph) -> FastAPI:
 
     @app.post("/api/runs", response_model=RunCreated, status_code=202)
     async def start_run(request: RunRequest) -> RunCreated:
+        # Checked here rather than inside the run: an unknown profile should be
+        # a 400 on the request that named it, not an error buried in a stream
+        # the page is still waiting to connect to.
+        resolve_profile_dir(request.profile)
+
         run = Run(run_id=uuid.uuid4().hex[:12])
         runs[run.run_id] = run
         run.task = asyncio.create_task(_execute(run, request, graph_factory))

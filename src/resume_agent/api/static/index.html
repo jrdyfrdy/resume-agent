@@ -12,12 +12,16 @@
   toolchain to install, keep current and explain. No webfonts and no CDN either:
   this is a localhost tool that has to come up with the network unplugged.
 
-  DESIGN DIRECTION -- "galley proof".
+  DESIGN DIRECTION -- "galley proof", quieted.
   The product's output is a typeset page, so the interface is a press: warm
   paper stock inside a dark frame, one proof-mark vermilion accent, and mono
-  type for every measured quantity. Structure is drawn with thin rules and
-  corner brackets rather than with more colour, because the palette has exactly
-  one job -- marking what is live.
+  type for every measured quantity. Structure is drawn with thin rules, because
+  the palette has exactly one job -- marking what is live.
+
+  The ornament that used to carry that idea (a diagonal paper texture, corner
+  brackets on the composer, a shadow on every panel) has come off: four layers
+  were saying the same thing, and the serif headline and the wordmark say it
+  on their own. What is left is one radius, one elevation, and whitespace.
 
   FOUR TABS, following the actual order of work: write the knowledge base
   (Guide), check it loaded (Profile), tailor against a posting (Tailor), see
@@ -80,11 +84,13 @@
     font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
   }
 
+  /* One soft elevation on the outer shell and nothing inside it. The diagonal
+     paper texture that used to live here was the fourth layer saying
+     "technical paper product" alongside the shadow, the corner brackets and the
+     wordmark -- three too many for one idea. */
   .sheet {
     max-width: 1080px; margin: 22px auto; background: var(--paper);
-    border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden;
-    background-image: repeating-linear-gradient(
-      135deg, transparent 0 6px, rgba(120, 100, 60, .022) 6px 7px);
+    border-radius: 14px; box-shadow: var(--shadow-lg); overflow: hidden;
   }
   @media (max-width: 720px) { .sheet { margin: 0; border-radius: 0; } }
 
@@ -149,6 +155,11 @@
   }
   h1 em { font-style: italic; color: var(--accent); }
   .lede { margin: 0; font-size: 16px; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
+  .hero-compact {
+    margin: 0; padding: 28px 26px 20px; max-width: 70ch;
+    font-size: 15px; color: var(--ink-2);
+  }
+  .run-status { margin: 0 0 10px; font: 12.5px/1.5 var(--mono); color: var(--ink-2); }
 
   @media (prefers-reduced-motion: no-preference) {
     .hero > * { animation: rise .62s cubic-bezier(.22,.68,.3,1) backwards; }
@@ -163,11 +174,15 @@
 
   /* ------------------------------------------------------------ containers */
   main { padding: 0 26px 30px; }
+  /* Thin-ruled regions, not cards. Nested rounded containers -- sheet 16 >
+     panel 10 > stats 8 -- read as three levels of grouping where the content
+     has one, so everything inside the shell shares a single small radius and
+     carries no shadow of its own. */
   .panel {
     background: var(--card); border: 1px solid var(--rule);
-    border-radius: 10px; padding: 18px; box-shadow: var(--shadow-md);
+    border-radius: 6px; padding: 20px;
   }
-  section + section, .panel + .panel { margin-top: 22px; }
+  section + section, .panel + .panel { margin-top: 26px; }
   h2 {
     font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
     color: var(--ink-3); margin: 0 0 13px;
@@ -182,18 +197,11 @@
   }
   .panel-lede { margin: 0 0 20px; color: var(--ink-2); max-width: 68ch; font-size: 14.5px; }
 
-  .composer { position: relative; }
-  .composer::before, .composer::after {
-    content: ""; position: absolute; width: 13px; height: 13px;
-    border: 1.5px solid var(--accent); opacity: .5; pointer-events: none;
-  }
-  .composer::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
-  .composer::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
 
   /* --------------------------------------------------------------- controls */
   textarea {
     width: 100%; min-height: 172px; resize: vertical; padding: 13px 14px;
-    border: 1px solid var(--rule); border-radius: 7px;
+    border: 1px solid var(--rule); border-radius: 6px;
     background: var(--paper); color: var(--ink); font: 13px/1.62 var(--mono);
   }
   textarea::placeholder { color: var(--ink-3); }
@@ -216,7 +224,7 @@
 
   button.cta {
     margin-left: auto; background: var(--accent); color: var(--on-accent);
-    border: 0; border-radius: 7px; padding: 10px 20px;
+    border: 0; border-radius: 6px; padding: 10px 20px;
     font: 600 14px/1 var(--sans); cursor: pointer;
     box-shadow: var(--shadow-sm); transition: filter .15s, transform .15s;
   }
@@ -235,7 +243,7 @@
   }
   pre {
     margin: 10px 0 0; padding: 12px 14px; overflow-x: auto;
-    background: var(--paper); border: 1px solid var(--rule); border-radius: 7px;
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 6px;
     font: 12.5px/1.65 var(--mono); color: var(--ink);
   }
   pre code { background: none; padding: 0; }
@@ -244,7 +252,7 @@
   .rail {
     display: grid; grid-template-columns: repeat(5, 1fr);
     background: var(--card); border: 1px solid var(--rule);
-    border-radius: 8px; overflow: hidden; box-shadow: var(--shadow-md);
+    border-radius: 6px; overflow: hidden;
   }
   /* Separators drawn by each cell rather than by gaps over a coloured grid:
      five phases into two columns leaves an orphan, and the gap technique
@@ -279,7 +287,9 @@
   @media (max-width: 460px) { .rail { grid-template-columns: 1fr; } }
 
   /* ------------------------------------------------------------------- log */
-  #log { font: 12.5px/1.75 var(--mono); max-height: 292px; overflow-y: auto; }
+  /* Tall enough that an ordinary run never scrolls inside a page that also
+     scrolls; the cap only catches a pathological repair loop. */
+  #log { font: 12.5px/1.75 var(--mono); max-height: 60vh; overflow-y: auto; }
   #log .row { display: flex; gap: 11px; align-items: baseline; }
   #log .t { color: var(--ink-3); min-width: 46px; text-align: right; flex: none; font-size: 11.5px; }
   #log .mark { width: 12px; flex: none; color: var(--ink-3); }
@@ -307,7 +317,7 @@
   .stats {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
     background: var(--paper); border: 1px solid var(--rule);
-    border-radius: 8px; overflow: hidden;
+    border-radius: 6px; overflow: hidden;
   }
   .stat { padding: 11px 13px; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
   .stat .k { font: 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
@@ -328,8 +338,8 @@
 
   embed {
     width: 100%; height: 520px; margin-top: 11px; display: block;
-    border: 1px solid var(--rule); border-radius: 8px;
-    background: var(--paper-2); box-shadow: var(--shadow-lg);
+    border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper-2);
   }
   a { color: var(--accent); }
   .dl { display: inline-block; margin-top: 10px; font: 12.5px var(--mono); }
@@ -343,6 +353,57 @@
   /* --------------------------------------------------------------- profile */
   .picker { display: flex; gap: 11px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
   .picker label { font: 12px/1 var(--mono); color: var(--ink-3); }
+
+  /* --- mode toggle ------------------------------------------------------ */
+  .modes { display: flex; gap: 0; margin-left: auto; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; }
+  .modes button {
+    appearance: none; border: 0; background: var(--paper); cursor: pointer;
+    padding: 7px 13px; font: 600 11px/1 var(--mono); letter-spacing: .05em;
+    text-transform: uppercase; color: var(--ink-3);
+  }
+  .modes button + button { border-left: 1px solid var(--rule); }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+
+  /* --- the editor ------------------------------------------------------- */
+  .editor { display: grid; grid-template-columns: minmax(170px, 210px) 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 780px) { .editor { grid-template-columns: 1fr; } }
+
+  .editor-pane { min-width: 0; }
+  .file-list { display: flex; flex-direction: column; gap: 1px; }
+  /* --ink-3, not --ink-4: these name the directory a file lives in, which is
+     information. --ink-4 is reserved for markers whose meaning is already
+     carried by something beside them (the stage numbers on the rail). */
+  .file-list .group {
+    font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-3); margin: 14px 0 6px;
+  }
+  .file-list .group:first-child { margin-top: 0; }
+  .file-list button {
+    appearance: none; border: 0; background: none; cursor: pointer; text-align: left;
+    padding: 6px 8px; border-radius: 4px; font: 12px/1.4 var(--mono); color: var(--ink-2);
+  }
+  .file-list button:hover { background: var(--paper-2); color: var(--ink); }
+  .file-list button[aria-current="true"] { background: var(--accent-wash); color: var(--ink); font-weight: 600; }
+  .file-list button.dirty::after { content: " •"; color: var(--accent); }
+
+  .editor-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .editor-path { font: 12.5px/1 var(--mono); color: var(--ink); }
+  .editor-state { font: 11.5px/1 var(--mono); color: var(--ink-3); }
+  .editor-state.saved { color: var(--ok); }
+  .editor-state.dirty { color: var(--warn); }
+  .editor-bar .cta { margin-left: auto; padding: 8px 16px; font-size: 13px; }
+
+  #editor-text {
+    width: 100%; min-height: 460px; resize: vertical; padding: 13px 14px;
+    border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink);
+    font: 12.5px/1.65 var(--mono); tab-size: 2; white-space: pre;
+  }
+  #editor-text:disabled { opacity: .55; }
+  .ok-note {
+    margin: 0 0 10px; padding: 9px 12px; border-left: 2px solid var(--ok);
+    background: var(--paper-2); font: 12px/1.6 var(--mono); color: var(--ink-2);
+  }
 
   .entry { border-top: 1px solid var(--rule); padding: 15px 0; }
   .entry:first-of-type { border-top: 0; padding-top: 0; }
@@ -405,6 +466,13 @@
   }
 
   .hidden { display: none; }
+
+  /* Reachable by a screen reader, invisible on screen. `display: none` would
+     hide it from both, which is the opposite of the point. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0;
+  }
 </style>
 </head>
 <body>
@@ -418,7 +486,7 @@
 
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Tailor</button>
-      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">Profile<span class="count" id="tab-profile-count"></span></button>
+      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">Profile</button>
       <button role="tab" id="tab-guide"   aria-controls="panel-guide"   aria-selected="false" data-tab="guide"   tabindex="-1">Guide</button>
       <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
     </nav>
@@ -426,7 +494,13 @@
 
   <!-- ============================================================ TAILOR -->
   <div role="tabpanel" id="panel-tailor" aria-labelledby="tab-tailor" tabindex="0">
-    <div class="hero">
+    <!--
+      The pitch is worth one read. It stays for someone who has not written a
+      knowledge base yet, because it explains what the tool is about to ask them
+      for; once `profile/` exists it collapses to the one line below, and the
+      textarea moves up into the first viewport where a daily tool belongs.
+    -->
+    <div class="hero" id="hero">
       <p class="eyebrow">Grounded resume generation</p>
       <h1>Every line on the page traces back to <em>something you actually did</em>.</h1>
       <p class="lede">
@@ -434,9 +508,12 @@
         can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
       </p>
     </div>
+    <p class="hero-compact hidden" id="hero-compact">
+      Paste a posting. Nothing reaches the page that is not traceable to a bullet you wrote.
+    </p>
 
     <main>
-      <section class="panel composer">
+      <section class="panel">
         <h2><label for="jd">The posting</label></h2>
         <textarea id="jd" placeholder="Paste the full job description here — title, responsibilities, requirements. The more of it the parser gets, the better the must-haves come out."></textarea>
         <div class="controls">
@@ -457,12 +534,22 @@
       <section>
         <h2>Pipeline</h2>
         <div class="rail" id="rail" aria-label="Pipeline stages"></div>
-        <p class="rail-note" id="rail-note">Sixteen stages. The repair stages only run if they are needed.</p>
+        <p class="rail-note" id="rail-note">
+          The sixteen stages of the graph, in order. They light up as the run reaches them;
+          the repair stages only run when they are needed.
+        </p>
       </section>
 
       <section class="panel hidden" id="log-panel">
         <h2>Run log</h2>
-        <div id="log" aria-live="polite" aria-label="Run progress"></div>
+        <!--
+          The live region is this one line, not the log. A run emits about
+          thirty-five events, and announcing every one of them turns a screen
+          reader into a firehose for the whole minute a run takes. One sentence
+          that changes as the stage changes is the useful thing to hear.
+        -->
+        <p class="run-status" id="run-status" role="status" aria-live="polite"></p>
+        <div id="log" aria-live="off" aria-label="Run log"></div>
       </section>
 
       <section class="panel hidden" id="result">
@@ -491,9 +578,40 @@
           <label for="profile-select">Knowledge base</label>
           <select id="profile-select"></select>
           <span class="facts" id="profile-meta"></span>
+          <!--
+            Browsing 200 bullets and editing one file are different tasks, so
+            this is a mode toggle rather than a replacement. Reading stays the
+            default: it is what you do far more often.
+          -->
+          <div class="modes" role="group" aria-label="Profile mode" id="profile-modes">
+            <button type="button" data-mode="browse" aria-pressed="true">Browse</button>
+            <button type="button" data-mode="edit" aria-pressed="false">Edit files</button>
+          </div>
         </div>
 
         <div id="profile-body"></div>
+
+        <div id="profile-editor" class="hidden">
+          <div class="editor">
+            <nav class="file-list" id="file-list" aria-label="Profile files"></nav>
+            <div class="editor-pane">
+              <div class="editor-bar">
+                <span class="editor-path" id="editor-path">select a file</span>
+                <span class="editor-state" id="editor-state"></span>
+                <button class="cta" id="save-file" disabled>Save</button>
+              </div>
+              <div id="editor-message"></div>
+              <label class="sr-only" for="editor-text">File contents</label>
+              <textarea id="editor-text" spellcheck="false" disabled></textarea>
+              <p class="note" id="editor-note">
+                Saved text is written exactly as typed — comments and formatting survive.
+                The whole profile is validated before anything is written, so a save that
+                would break it is refused and the file on disk is left untouched.
+                Every save keeps a timestamped backup.
+              </p>
+            </div>
+          </div>
+        </div>
       </section>
     </main>
   </div>
@@ -650,6 +768,12 @@ let profileOptions = [];
 
 function selectTab(name) {
   if (!TABS.includes(name)) name = "tailor";
+  // Leaving the Profile tab with unsaved text would lose it silently, and the
+  // text is career data the user just typed.
+  if (name !== "profile" && isDirty() &&
+      !confirm(`Discard unsaved changes to ${editor.path}?`)) {
+    return;
+  }
   for (const tab of TABS) {
     const button = $(`tab-${tab}`);
     const panel = $(`panel-${tab}`);
@@ -746,7 +870,13 @@ async function loadProfiles() {
     select.value = chosen.name;
   }
   showActiveProfile();
-  $("tab-profile-count").textContent = usable.length > 1 ? `(${usable.length})` : "";
+
+  // The pitch earns its space exactly once: while there is no knowledge base
+  // to run against, it explains what the tool is about to ask for. After that
+  // it is 200px of copy above a textarea on a tool you reopen daily.
+  const hasOwnProfile = usable.some((o) => !o.is_example);
+  $("hero").classList.toggle("hidden", hasOwnProfile);
+  $("hero-compact").classList.toggle("hidden", !hasOwnProfile);
 
   renderProfileBody();
 }
@@ -771,6 +901,7 @@ async function renderProfileBody() {
   if (!profileOptions.length) {
     $("profile-body").innerHTML = setupHtml();
     $("profile-meta").textContent = "";
+    $("create-profile")?.addEventListener("click", createProfile);
     return;
   }
 
@@ -859,6 +990,7 @@ function setupHtml() {
           If a file has a mistake it is listed with the error rather than silently skipped.</li>
       </ol>
       <p><code>profile/</code> is gitignored — your real career data is never committed.</p>
+      <button class="cta" id="create-profile" style="margin-left:0">Create my profile</button>
     </div>`;
 }
 
@@ -1030,6 +1162,7 @@ async function start() {
   $("result").classList.add("hidden");
   $("letterbox").classList.add("hidden");
   resetRail();
+  $("run-status").textContent = "starting…";
   if (source) source.close();
 
   const res = await fetch("/api/runs", {
@@ -1051,12 +1184,13 @@ async function start() {
   source.onmessage = (e) => {
     const ev = JSON.parse(e.data);
     log(ev.kind, ev.name, ev.detail, ev.elapsed_s);
-    if (ev.kind === "node_start") markNode(ev.name, "active");
+    if (ev.kind === "node_start") { markNode(ev.name, "active"); announce(ev.name); }
     if (ev.kind === "node_end") markNode(ev.name, "done");
   };
   source.addEventListener("end", async () => {
     source.close();
     summariseRail();
+    $("run-status").textContent = "Run finished.";
     finish();
     renderResult(await (await fetch(`/api/runs/${run_id}`)).json());
     loadApplications();
@@ -1073,6 +1207,156 @@ function finish() {
   $("run").textContent = "Tailor my resume";
 }
 
+function announce(node) {
+  // One sentence, rewritten as the stage changes. This is the only live region
+  // on the page: announcing all ~35 log lines would be unusable.
+  const done = $("rail").querySelectorAll('li[data-state="done"]').length;
+  const total = $("rail").querySelectorAll("li").length;
+  $("run-status").textContent = `${node} — stage ${done + 1} of ${total}`;
+}
+
+/* -------------------------------------------------------------- editor */
+
+const editor = { path: null, saved: "", files: [] };
+
+function isDirty() {
+  return editor.path !== null && $("editor-text").value !== editor.saved;
+}
+
+async function loadFileList() {
+  try {
+    const data = await (await fetch(
+      `/api/profile/files?profile=${encodeURIComponent(activeProfile)}`)).json();
+    editor.files = data.files || [];
+  } catch {
+    editor.files = [];
+  }
+
+  // Grouped by directory in load order, matching how the profile is assembled
+  // rather than one flat alphabetical list.
+  const groups = { "": [], experience: [], projects: [], narratives: [] };
+  for (const file of editor.files) {
+    const slash = file.indexOf("/");
+    const dir = slash === -1 ? "" : file.slice(0, slash);
+    (groups[dir] ??= []).push(file);
+  }
+
+  $("file-list").innerHTML = Object.entries(groups)
+    .filter(([, files]) => files.length)
+    .map(([dir, files]) =>
+      `<div class="group">${esc(dir || "profile")}</div>` +
+      files.map((f) =>
+        `<button type="button" data-file="${esc(f)}" aria-current="${f === editor.path}">` +
+        `${esc(f.includes("/") ? f.slice(f.indexOf("/") + 1) : f)}</button>`).join(""))
+    .join("");
+
+  $("file-list").querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => openFile(button.dataset.file));
+  });
+}
+
+async function openFile(path) {
+  if (isDirty() && !confirm(`Discard unsaved changes to ${editor.path}?`)) return;
+
+  setEditorMessage("");
+  try {
+    const response = await fetch(
+      `/api/profile/file?profile=${encodeURIComponent(activeProfile)}` +
+      `&path=${encodeURIComponent(path)}`);
+    if (!response.ok) throw new Error((await response.json()).detail);
+    const file = await response.json();
+
+    editor.path = path;
+    editor.saved = file.text;
+    $("editor-text").value = file.text;
+    $("editor-text").disabled = false;
+    $("editor-path").textContent = path;
+    loadFileList();
+    refreshEditorState();
+  } catch (e) {
+    setEditorMessage(e.message, false);
+  }
+}
+
+function refreshEditorState() {
+  const dirty = isDirty();
+  $("save-file").disabled = !dirty;
+  $("editor-state").className = "editor-state" + (dirty ? " dirty" : "");
+  $("editor-state").textContent = editor.path ? (dirty ? "unsaved changes" : "") : "";
+  const current = $("file-list").querySelector(`button[data-file="${CSS.escape(editor.path ?? "")}"]`);
+  $("file-list").querySelectorAll("button").forEach((b) => b.classList.remove("dirty"));
+  if (dirty && current) current.classList.add("dirty");
+}
+
+function setEditorMessage(text, ok) {
+  $("editor-message").innerHTML = !text ? ""
+    : ok ? `<div class="ok-note">${esc(text)}</div>`
+         : `<div class="errors">${esc(text)}</div>`;
+}
+
+async function saveFile() {
+  if (!editor.path) return;
+  $("save-file").disabled = true;
+  setEditorMessage("");
+
+  const text = $("editor-text").value;
+  try {
+    const response = await fetch("/api/profile/file", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, path: editor.path, text }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail);
+    const result = await response.json();
+
+    if (!result.ok) {
+      // Invalid YAML is an ordinary outcome of editing, not a crash. The file
+      // on disk is unchanged, so the editor keeps the text and shows why.
+      setEditorMessage(result.error, false);
+      refreshEditorState();
+      return;
+    }
+
+    editor.saved = text;
+    setEditorMessage(`Saved. Previous version kept at ${result.backup}`, true);
+    refreshEditorState();
+    // The profile changed, so everything derived from it is stale.
+    await Promise.all([loadProfiles(), loadProfileSummary()]);
+  } catch (e) {
+    setEditorMessage(e.message, false);
+    refreshEditorState();
+  }
+}
+
+function setProfileMode(mode) {
+  const editing = mode === "edit";
+  $("profile-modes").querySelectorAll("button").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode));
+  });
+  $("profile-body").classList.toggle("hidden", editing);
+  $("profile-editor").classList.toggle("hidden", !editing);
+  if (editing && !editor.files.length) loadFileList();
+}
+
+async function createProfile() {
+  const button = $("create-profile");
+  if (button) { button.disabled = true; button.textContent = "Creating…"; }
+  try {
+    const response = await fetch("/api/profile/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "profile", source: "profile.example" }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail);
+    safeSet("resume-agent.profile", "profile");
+    await loadProfiles();
+    await loadProfileSummary();
+    setProfileMode("edit");
+  } catch (e) {
+    $("profile-body").innerHTML = `<div class="errors">${esc(e.message)}</div>`;
+  }
+}
+
 /* ----------------------------------------------------------------- init */
 
 $("run").addEventListener("click", start);
@@ -1086,6 +1370,26 @@ $("profile-select").addEventListener("change", async (e) => {
   showActiveProfile();
   await Promise.all([renderProfileBody(), loadProfileSummary()]);
 });
+
+$("editor-text").addEventListener("input", refreshEditorState);
+$("save-file").addEventListener("click", saveFile);
+$("profile-modes").querySelectorAll("button").forEach((button) => {
+  button.addEventListener("click", () => setProfileMode(button.dataset.mode));
+});
+// Tab inserts two spaces instead of leaving the field: this is a YAML editor,
+// and indentation is the syntax.
+$("editor-text").addEventListener("keydown", (e) => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const el = e.target, at = el.selectionStart;
+    el.value = el.value.slice(0, at) + "  " + el.value.slice(el.selectionEnd);
+    el.selectionStart = el.selectionEnd = at + 2;
+    refreshEditorState();
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key === "s") { e.preventDefault(); saveFile(); }
+});
+// The browser's own guard, for the close-tab case a confirm() cannot cover.
+window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 
 wireTabs();
 buildRail();

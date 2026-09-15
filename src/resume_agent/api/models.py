@@ -141,6 +141,68 @@ class ProfileDetail(BaseModel):
     certifications: list[str] = Field(default_factory=list)
 
 
+class ProfileFileList(BaseModel):
+    """Which files of a profile the editor may open."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    files: list[str] = Field(default_factory=list)
+
+
+class ProfileFile(BaseModel):
+    """One file's text, exactly as it sits on disk."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    path: str
+    text: str
+
+
+class SaveFileRequest(BaseModel):
+    """An edited file on its way back.
+
+    No length cap: a profile file is small, and truncating someone's career data
+    to satisfy a limit would be worse than any request this guards against.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    profile: str
+    path: str
+    text: str
+
+
+class SaveResult(BaseModel):
+    """What happened to a save.
+
+    Invalid YAML is a **normal** outcome of editing, not an exceptional one, so
+    it comes back 200 with `ok=False` and the loader's own message. The 4xx
+    codes are reserved for requests that could never succeed -- an unknown
+    profile, a path outside it, a file that does not exist. That split keeps the
+    editor's error handling honest: one branch renders a validation message, the
+    other is a bug.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ok: bool
+    error: str | None = None
+    # Where the previous text went. `profile/` is gitignored, so this is the
+    # only undo that exists, and the editor says so out loud after a save.
+    backup: str | None = None
+
+
+class CreateProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Constrained here rather than in the handler: this becomes a directory name
+    # on disk, so a slash or a dot-dot must never reach the filesystem layer.
+    name: str = Field(default="profile", pattern=r"^[A-Za-z0-9._-]{1,64}$")
+    source: str = "profile.example"
+
+
 class RunSummary(BaseModel):
     """The finished run, as the page needs it."""
 

@@ -9,6 +9,11 @@ evals/results/
 # stand-in that tests and development use (CLAUDE.md).
 profile/
 
+# Pre-write copies taken by the web editor before it overwrites a profile file.
+# `profile/` is ignored and therefore unrecoverable from git, so this directory
+# is the only undo that exists -- keep it, but never commit career data.
+.profile-backups/
+
 # Upstream template + license, fetched by scripts, not authored here.
 .vendor/
 

@@ -20,6 +20,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from resume_agent.cache import default_cache_dir
 from resume_agent.models.job import JobSpec, job_description_hash
 
 CACHE_DIR = Path(".cache") / "jd"
@@ -37,8 +38,14 @@ def jd_cache_key(raw_jd: str, model: str, prompt_version: str) -> str:
 class JobSpecCache:
     """A directory of parsed postings, one JSON file per cache key."""
 
-    def __init__(self, cache_dir: Path = CACHE_DIR) -> None:
-        self.cache_dir = Path(cache_dir)
+    def __init__(self, cache_dir: Path | None = None) -> None:
+        # Resolved at call time through the shared cache-directory override,
+        # not bound as a default argument. Without this the tests that pre-seed
+        # a parse wrote their fixture JobSpec ("Acme Corp") into the developer's
+        # real `.cache/jd/` -- the same leak that had already been fixed for the
+        # tracker and the model cache, missed here because this class predates
+        # the override and carried its own default.
+        self.cache_dir = Path(cache_dir) if cache_dir else default_cache_dir() / "jd"
 
     def path_for(self, key: str) -> Path:
         return self.cache_dir / f"{key}.json"

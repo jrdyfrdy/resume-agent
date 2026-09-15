@@ -205,6 +205,37 @@ def test_the_profile_name_is_only_written_through_its_guard() -> None:
     ), "write to note-profile outside showActiveProfile()"
 
 
+def test_every_class_the_page_uses_is_defined() -> None:
+    """Caught a real one: `.sr-only` survived in the markup but its rule was
+    lost in a rewrite, so a screen-reader-only label rendered as a heading in
+    the middle of the editor. A class that styles nothing is either dead markup
+    or a missing rule, and both are worth knowing about."""
+    text = page_source()
+    styles = text.split("<style>")[1].split("</style>")[0]
+
+    used = set(re.findall(r'class="([^"]+)"', text))
+    # Class attributes inside template literals interpolate, so a raw split
+    # yields fragments like `bullet${bullet.confidence`. Only real CSS
+    # identifiers are candidates.
+    names = {
+        name
+        for group in used
+        for name in group.split()
+        if re.fullmatch(r"[a-zA-Z][\w-]*", name)
+    }
+
+    undefined = {name for name in names if f".{name}" not in styles}
+    assert not undefined, f"classes used in markup but never styled: {sorted(undefined)}"
+
+
+def test_the_editor_explains_what_a_save_does() -> None:
+    """The user is editing non-regenerable data through a browser. The three
+    guarantees that make that safe are worth stating where they act."""
+    text = page_source()
+    assert "validated before anything" in text
+    assert "backup" in text
+
+
 def test_the_page_hardcodes_no_vendor_key_name() -> None:
     """The blocked state is rendered from `credentials_var`, so a vendor
     variable spelled out in the page would be a bug that only shows up for
@@ -287,6 +318,99 @@ def test_profile_detail_groups_skills_by_category(client: TestClient) -> None:
 
 def test_profile_detail_on_an_unknown_profile_is_a_400(client: TestClient) -> None:
     assert client.get("/api/profile/detail", params={"profile": "nope"}).status_code == 400
+
+
+# ===========================================================================
+# Editing
+# ===========================================================================
+
+
+@pytest.mark.parametrize(
+    "endpoint,params",
+    [
+        ("/api/profile", {"profile": "../.."}),
+        ("/api/profile/detail", {"profile": "../.."}),
+        ("/api/profile/files", {"profile": "../.."}),
+        ("/api/profile/file", {"profile": "../..", "path": "identity.yaml"}),
+    ],
+)
+def test_the_profile_parameter_cannot_escape_the_allow_list(
+    client: TestClient, endpoint: str, params: dict
+) -> None:
+    """`profile` comes from the browser. Read-only it was merely sloppy; with a
+    save endpoint in the same app it chooses where writes land, so every
+    endpoint resolves it through `discover_profiles()`."""
+    assert client.get(endpoint, params=params).status_code == 400
+
+
+def test_a_run_cannot_name_a_profile_outside_the_allow_list(client: TestClient) -> None:
+    """Refused on the request that named it, rather than inside a stream the
+    page has not connected to yet."""
+    response = client.post("/api/runs", json={"jd": "Backend engineer.", "profile": "../.."})
+    assert response.status_code == 400
+
+
+def test_the_file_list_is_offered(client: TestClient) -> None:
+    body = client.get("/api/profile/files").json()
+    assert "identity.yaml" in body["files"]
+    assert "experience/halvorsen_bright.yaml" in body["files"]
+
+
+def test_reading_a_file_returns_it_verbatim(client: TestClient) -> None:
+    text = client.get("/api/profile/file", params={"path": "identity.yaml"}).json()["text"]
+    on_disk = (Path("profile.example") / "identity.yaml").read_text(encoding="utf-8")
+    assert text == on_disk
+
+
+@pytest.mark.parametrize("path", ["../pyproject.toml", "/etc/passwd", "experience/x.yml"])
+def test_reading_outside_the_profile_is_refused(client: TestClient, path: str) -> None:
+    assert client.get("/api/profile/file", params={"path": path}).status_code == 400
+
+
+def test_a_save_with_a_bad_path_is_a_400_not_a_result(client: TestClient) -> None:
+    """A path the editor should never have sent is a bug, not bad YAML, so it
+    gets a status code rather than an `ok=False` body the page would render as
+    a validation message."""
+    response = client.put(
+        "/api/profile/file",
+        json={"profile": "profile.example", "path": "../escape.yaml", "text": "x"},
+    )
+    assert response.status_code == 400
+
+
+def test_invalid_content_is_a_result_not_an_error_status(client: TestClient) -> None:
+    """Invalid YAML is an ordinary outcome of editing. 200 with `ok=False` keeps
+    the editor's two branches honest: one renders a message, the other is a bug.
+
+    Uses `profile.example` deliberately -- a refused save must not touch disk,
+    and this asserts that on the very file the golden snapshot renders from.
+    """
+    before = (Path("profile.example") / "identity.yaml").read_bytes()
+
+    response = client.put(
+        "/api/profile/file",
+        json={"profile": "profile.example", "path": "identity.yaml", "text": "name: [broken\n"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is False and body["backup"] is None
+    assert "not valid YAML" in body["error"]
+    assert (Path("profile.example") / "identity.yaml").read_bytes() == before
+
+
+def test_creating_a_profile_refuses_an_unsafe_name(client: TestClient) -> None:
+    """The name becomes a directory. A slash or a dot-dot must never reach the
+    filesystem layer, so it is constrained by the request model itself."""
+    for name in ["../escape", "a/b", "", "x" * 65]:
+        response = client.post("/api/profile/create", json={"name": name})
+        assert response.status_code == 422, name
+
+
+def test_creating_over_an_existing_profile_is_refused(client: TestClient) -> None:
+    response = client.post("/api/profile/create", json={"name": "profile.example"})
+    assert response.status_code == 400
+    assert "already exists" in response.json()["detail"]
 
 
 def test_unknown_run_is_404(client: TestClient) -> None:

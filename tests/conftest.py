@@ -16,6 +16,7 @@ from resume_agent.kb.embeddings import FastEmbedEmbeddings
 from resume_agent.kb.index import ProfileIndex
 from resume_agent.kb.loader import load_profile
 from resume_agent.kb.retriever import HybridRetriever
+from resume_agent.kb.writer import PROFILE_BACKUP_DIR_ENV_VAR
 from resume_agent.latex.compile import CompileResult, compile_tex, find_compiler
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
@@ -106,4 +107,12 @@ def isolated_model_cache(tmp_path_factory: pytest.TempPathFactory, monkeypatch) 
     # application into the user's real, non-regenerable tracker.
     monkeypatch.setenv(
         TRACKER_DB_ENV_VAR, str(tmp_path_factory.mktemp("tracker") / "applications.db")
+    )
+
+    # Highest stakes of the three. `kb/writer.py` copies a file before
+    # overwriting it, and that copy is the only undo a gitignored `profile/`
+    # has. Without this, a writer test would drop backups into the user's real
+    # backup directory, beside their career data.
+    monkeypatch.setenv(
+        PROFILE_BACKUP_DIR_ENV_VAR, str(tmp_path_factory.mktemp("profile_backups"))
     )
