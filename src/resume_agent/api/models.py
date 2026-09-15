@@ -12,6 +12,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from resume_agent.latex.context import format_date_range
+from resume_agent.models.profile import Bullet, Profile
+
 RunStatus = Literal["queued", "running", "paused", "done", "failed"]
 
 
@@ -67,6 +70,77 @@ class ProfileSummary(BaseModel):
     credentials_var: str
 
 
+class ProfileOption(BaseModel):
+    """One knowledge base the UI can point a run at.
+
+    Discovered by looking for `identity.yaml`, because that is the one file
+    every profile must have and the thing `load_profile` fails on first.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    is_example: bool
+    # A profile that exists but does not load is worth showing with its error
+    # rather than hiding: "my profile vanished from the list" is a much harder
+    # thing to debug than "my profile is listed and says what is wrong with it".
+    loads: bool
+    error: str | None = None
+    bullets: int = 0
+
+
+class BulletView(BaseModel):
+    """One bullet as the Profile tab shows it.
+
+    `metrics` is stringified because the page renders it either way, and a wire
+    type of `int | float | str` only creates work for the reader.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    canonical: str
+    skills: list[str] = Field(default_factory=list)
+    themes: list[str] = Field(default_factory=list)
+    metrics: dict[str, str] = Field(default_factory=dict)
+    confidence: str = "verified"
+    evidence: str | None = None
+
+
+class EntryView(BaseModel):
+    """A role or a project, flattened into something renderable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    kind: Literal["experience", "project"]
+    heading: str
+    subheading: str
+    tech: list[str] = Field(default_factory=list)
+    bullets: list[BulletView] = Field(default_factory=list)
+
+
+class ProfileDetail(BaseModel):
+    """Everything the Profile tab needs to show what is actually loaded.
+
+    The point of the tab is that the knowledge base is the input the whole tool
+    runs on, and until now it was invisible from the UI -- you could not tell
+    whether a bullet you had written was being read at all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    person: str
+    email: str
+    location: str
+    entries: list[EntryView] = Field(default_factory=list)
+    skills_by_category: dict[str, list[str]] = Field(default_factory=dict)
+    narratives: list[str] = Field(default_factory=list)
+    education: list[str] = Field(default_factory=list)
+    certifications: list[str] = Field(default_factory=list)
+
+
 class RunSummary(BaseModel):
     """The finished run, as the page needs it."""
 
@@ -103,6 +177,78 @@ class ApplicationSummary(BaseModel):
     title: str
     overall_fit: float | None
     outcome: str | None
+
+
+def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
+    """Flatten a loaded `Profile` into something the browser can render.
+
+    Experience and projects become one list because the Profile tab shows them
+    the same way -- a heading, a date range, some technologies, and the bullets
+    underneath. Keeping them apart on the wire would only push the job of
+    telling them apart into JavaScript.
+    """
+    entries: list[EntryView] = []
+
+    for role in profile.experience:
+        entries.append(
+            EntryView(
+                id=role.id,
+                kind="experience",
+                heading=f"{role.title}, {role.org}",
+                subheading=f"{format_date_range(role.start, role.end)} · {role.location}",
+                tech=list(role.tech),
+                bullets=[_bullet_view(b) for b in role.bullets],
+            )
+        )
+
+    for project in profile.projects:
+        entries.append(
+            EntryView(
+                id=project.id,
+                kind="project",
+                heading=project.name,
+                subheading=" · ".join(
+                    part
+                    for part in (format_date_range(project.start, project.end), project.role)
+                    if part
+                ),
+                tech=list(project.tech),
+                bullets=[_bullet_view(b) for b in project.bullets],
+            )
+        )
+
+    by_category: dict[str, list[str]] = {}
+    for skill in profile.skills:
+        by_category.setdefault(skill.category, []).append(skill.canonical)
+    for names in by_category.values():
+        names.sort()
+
+    return ProfileDetail(
+        name=name,
+        person=profile.identity.name,
+        email=profile.identity.email,
+        location=profile.identity.location,
+        entries=entries,
+        skills_by_category=by_category,
+        narratives=[n.name for n in profile.narratives],
+        education=[f"{e.degree} — {e.institution}" for e in profile.education],
+        certifications=[f"{c.name} — {c.issuer}" for c in profile.certifications],
+    )
+
+
+def _bullet_view(bullet: Bullet) -> BulletView:
+    return BulletView(
+        id=bullet.id,
+        canonical=bullet.canonical,
+        skills=list(bullet.skills),
+        themes=list(bullet.themes),
+        # Stringified here rather than in the page: the grounding gate compares
+        # these as text anyway, and showing them is the point -- these are the
+        # only numbers a tailored bullet is allowed to contain.
+        metrics={key: str(value) for key, value in bullet.metrics.items()},
+        confidence=bullet.confidence,
+        evidence=bullet.evidence,
+    )
 
 
 def summarise_state(run_id: str, status: RunStatus, state: dict[str, Any]) -> RunSummary:

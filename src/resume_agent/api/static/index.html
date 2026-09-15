@@ -9,36 +9,35 @@
   Deliberately one file, no build step, no framework, no network.
 
   Spec 8 asks for a "minimal frontend". A bundler in a Python repo is a second
-  toolchain to install, keep current and explain, and this page is a textarea,
-  a progress rail and a PDF viewer. Vanilla plus EventSource is the whole
-  requirement. No webfonts and no CDN either: this is a localhost tool that has
-  to come up with the network unplugged.
+  toolchain to install, keep current and explain. No webfonts and no CDN either:
+  this is a localhost tool that has to come up with the network unplugged.
 
   DESIGN DIRECTION -- "galley proof".
   The product's output is a typeset page, so the interface is a press: warm
   paper stock inside a dark frame, one proof-mark vermilion accent, and mono
-  type for every measured quantity (elapsed seconds, line budget, node names).
-  Structure is drawn with thin rules and corner brackets rather than with more
-  colour, because the palette has exactly one job -- marking what is live.
+  type for every measured quantity. Structure is drawn with thin rules and
+  corner brackets rather than with more colour, because the palette has exactly
+  one job -- marking what is live.
+
+  FOUR TABS, following the actual order of work: write the knowledge base
+  (Guide), check it loaded (Profile), tailor against a posting (Tailor), see
+  what you sent (History). Tailor opens first because it is the repeated task;
+  the others are read when something needs setting up or checking.
 -->
 <style>
-  /* ---------------------------------------------------------------------
-     Tokens. Light is the designed direction; dark is the same system on a
-     darker stock, so the accent and the structure survive the switch.
-     --------------------------------------------------------------------- */
   :root {
-    --press:      #171613;   /* the dark field the paper sits on */
-    --paper:      #f7f3ea;   /* main interior surface */
-    --paper-2:    #efe9db;   /* recessed paper: rails, wells */
-    --card:       #fffdf8;   /* bright product surfaces */
+    --press:      #171613;
+    --paper:      #f7f3ea;
+    --paper-2:    #efe9db;
+    --card:       #fffdf8;
     --rule:       #e0d7c5;
     --rule-firm:  #c7bba3;
     --ink:        #24221d;
     --ink-2:      #5d574c;
     --ink-3:      #726a5c;   /* small mono metadata: 4.8:1 on paper */
-    --ink-4:      #9a9081;   /* architectural stage numbers only: 3.1:1 */
+    --ink-4:      #9a9081;   /* architectural markers only: 3.1:1 */
     --accent:     #b3441f;   /* proof-mark vermilion. Marks live state only. */
-    --on-accent:  #fffdf8;   /* text on an accent fill; flips in dark, see below */
+    --on-accent:  #fffdf8;
     --accent-wash:rgba(179, 68, 31, .10);
     --ok:         #3d6b4d;
     --warn:       #8a6318;
@@ -48,8 +47,6 @@
     --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
     --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
-    /* Layered neutral elevation (beautiful-shadows), as plain CSS. One
-       strength per component; never stacked on a single element. */
     --shadow-sm: 0 2px 3px -1px rgba(0,0,0,.10), 0 1px 0 0 rgba(25,28,33,.02),
                  0 0 0 1px rgba(25,28,33,.08);
     --shadow-md: 0 0 0 1px rgba(0,0,0,.06), 0 1px 1px -.5px rgba(0,0,0,.06),
@@ -62,26 +59,14 @@
 
   @media (prefers-color-scheme: dark) {
     :root {
-      --press:      #0b0b0a;
-      --paper:      #1b1a17;
-      --paper-2:    #232320;
-      --card:       #27251f;
-      --rule:       #36332c;
-      --rule-firm:  #4c473e;
-      --ink:        #ece7db;
-      --ink-2:      #a8a092;
-      --ink-3:      #968d7e;
-      --ink-4:      #7a7264;
-      --accent:     #e3764c;
+      --press: #0b0b0a; --paper: #1b1a17; --paper-2: #232320; --card: #27251f;
+      --rule: #36332c; --rule-firm: #4c473e; --ink: #ece7db; --ink-2: #a8a092;
+      --ink-3: #968d7e; --ink-4: #7a7264; --accent: #e3764c;
       /* The dark accent is light enough that white on it falls to 3.0:1, so the
          CTA takes dark ink instead. Same button, legible on both stocks. */
-      --on-accent:  #21150f;
-      --accent-wash:rgba(227, 118, 76, .14);
-      --ok:         #7fb894;
-      --warn:       #d6a75a;
-      --bad:        #e5897a;
-      /* Neutral drop shadows vanish on a dark ground, so elevation is carried
-         by a ring instead. Same role, different material. */
+      --on-accent: #21150f;
+      --accent-wash: rgba(227, 118, 76, .14);
+      --ok: #7fb894; --warn: #d6a75a; --bad: #e5897a;
       --shadow-sm: 0 0 0 1px rgba(255,255,255,.05);
       --shadow-md: 0 0 0 1px rgba(255,255,255,.06), 0 8px 24px -12px rgba(0,0,0,.9);
       --shadow-lg: 0 0 0 1px rgba(255,255,255,.07), 0 24px 60px -24px rgba(0,0,0,.95);
@@ -91,24 +76,13 @@
   * { box-sizing: border-box; }
 
   body {
-    margin: 0;
-    background: var(--press);
-    color: var(--ink);
-    font: 15px/1.6 var(--sans);
-    -webkit-font-smoothing: antialiased;
+    margin: 0; background: var(--press); color: var(--ink);
+    font: 15px/1.6 var(--sans); -webkit-font-smoothing: antialiased;
   }
 
-  /* The framed master container: the whole experience is one sheet of paper
-     laid on the dark field. */
   .sheet {
-    max-width: 1080px;
-    margin: 22px auto;
-    background: var(--paper);
-    border-radius: 16px;
-    box-shadow: var(--shadow-lg);
-    overflow: hidden;
-    /* Low-contrast diagonal tooth so the paper reads as a material rather
-       than as a flat fill. Kept well below the type's contrast. */
+    max-width: 1080px; margin: 22px auto; background: var(--paper);
+    border-radius: 16px; box-shadow: var(--shadow-lg); overflow: hidden;
     background-image: repeating-linear-gradient(
       135deg, transparent 0 6px, rgba(120, 100, 60, .022) 6px 7px);
   }
@@ -117,17 +91,12 @@
   /* ---------------------------------------------------------------- header */
   header {
     display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-    padding: 15px 26px;
-    border-bottom: 1px solid var(--rule);
-    background: var(--paper-2);
+    padding: 15px 26px 0; background: var(--paper-2);
   }
   .wordmark {
-    font: 600 14px/1 var(--mono);
-    letter-spacing: -.01em;
+    font: 600 14px/1 var(--mono); letter-spacing: -.01em;
     display: flex; align-items: center; gap: 8px;
   }
-  /* The press mark. A drawn glyph, not an icon-tile: it is the only brand
-     element and it stands for the printed page. */
   .wordmark i {
     width: 11px; height: 14px; border: 1.5px solid var(--accent);
     border-radius: 1px; position: relative; display: inline-block;
@@ -139,26 +108,48 @@
   }
   .facts { font: 12px/1 var(--mono); color: var(--ink-2); }
   .facts b { font-weight: 600; color: var(--ink); }
-  .ready { margin-left: auto; font: 12px/1 var(--mono); display: flex; align-items: center; gap: 7px; }
+  .ready {
+    margin-left: auto; font: 12px/1 var(--mono);
+    display: flex; align-items: center; gap: 7px;
+  }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
   .ready.is-ready .dot { background: var(--ok); }
   .ready.is-blocked .dot { background: var(--bad); }
   .ready.is-blocked { color: var(--bad); }
 
+  /* ------------------------------------------------------------------ tabs */
+  .tabs {
+    display: flex; gap: 2px; width: 100%; margin-top: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .tabs button {
+    appearance: none; background: none; border: 0; cursor: pointer;
+    padding: 9px 15px; margin: 0; border-radius: 6px 6px 0 0;
+    font: 600 12px/1 var(--mono); letter-spacing: .05em; text-transform: uppercase;
+    color: var(--ink-3); border-bottom: 2px solid transparent;
+    margin-bottom: -1px; box-shadow: none;
+  }
+  .tabs button:hover { color: var(--ink); background: var(--card); }
+  .tabs button[aria-selected="true"] {
+    color: var(--accent); border-bottom-color: var(--accent); background: var(--paper);
+  }
+  .tabs .count {
+    font-size: 10px; color: var(--ink-4); margin-left: 5px;
+  }
+
   /* ------------------------------------------------------------------ hero */
-  .hero { padding: 46px 26px 30px; max-width: 760px; }
+  .hero { padding: 40px 26px 26px; max-width: 760px; }
   .eyebrow {
     font: 600 11px/1 var(--mono); letter-spacing: .13em; text-transform: uppercase;
-    color: var(--accent); margin: 0 0 18px;
+    color: var(--accent); margin: 0 0 16px;
   }
   h1 {
-    font: 400 clamp(29px, 4.3vw, 45px)/1.12 var(--serif);
-    letter-spacing: -.017em; margin: 0 0 18px; text-wrap: balance;
+    font: 400 clamp(26px, 3.6vw, 38px)/1.14 var(--serif);
+    letter-spacing: -.017em; margin: 0 0 16px; text-wrap: balance;
   }
   h1 em { font-style: italic; color: var(--accent); }
-  .lede { margin: 0; font-size: 16.5px; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
+  .lede { margin: 0; font-size: 16px; color: var(--ink-2); max-width: 62ch; text-wrap: pretty; }
 
-  /* Masked headline reveal -- the one authored entrance on the page. */
   @media (prefers-reduced-motion: no-preference) {
     .hero > * { animation: rise .62s cubic-bezier(.22,.68,.3,1) backwards; }
     .hero > :nth-child(1) { animation-delay: .02s; }
@@ -176,14 +167,21 @@
     background: var(--card); border: 1px solid var(--rule);
     border-radius: 10px; padding: 18px; box-shadow: var(--shadow-md);
   }
-  .panel + .panel, section + section { margin-top: 22px; }
+  section + section, .panel + .panel { margin-top: 22px; }
   h2 {
     font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
     color: var(--ink-3); margin: 0 0 13px;
   }
+  h3 {
+    font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    margin: 0 0 9px; color: var(--ink-3);
+  }
+  h3.alarm { color: var(--bad); }
+  .panel-title {
+    font: 400 20px/1.3 var(--serif); margin: 0 0 6px; letter-spacing: -.01em;
+  }
+  .panel-lede { margin: 0 0 20px; color: var(--ink-2); max-width: 68ch; font-size: 14.5px; }
 
-  /* Corner brackets on the focal card only. Instrumented, not decorated:
-     they mark where the one input lives. */
   .composer { position: relative; }
   .composer::before, .composer::after {
     content: ""; position: absolute; width: 13px; height: 13px;
@@ -192,15 +190,19 @@
   .composer::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 10px 0 0 0; }
   .composer::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 10px 0; }
 
-  /* --------------------------------------------------------------- composer */
+  /* --------------------------------------------------------------- controls */
   textarea {
-    width: 100%; min-height: 178px; resize: vertical; padding: 13px 14px;
+    width: 100%; min-height: 172px; resize: vertical; padding: 13px 14px;
     border: 1px solid var(--rule); border-radius: 7px;
-    background: var(--paper); color: var(--ink);
-    font: 13px/1.62 var(--mono);
+    background: var(--paper); color: var(--ink); font: 13px/1.62 var(--mono);
   }
   textarea::placeholder { color: var(--ink-3); }
-  textarea:focus-visible, button:focus-visible, input:focus-visible, a:focus-visible {
+  select {
+    padding: 7px 10px; border: 1px solid var(--rule); border-radius: 6px;
+    background: var(--paper); color: var(--ink); font: 12.5px/1 var(--mono);
+  }
+  textarea:focus-visible, button:focus-visible, input:focus-visible,
+  a:focus-visible, select:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 2px;
   }
 
@@ -212,42 +214,42 @@
   }
   label.check input { accent-color: var(--accent); margin: 0; }
 
-  button {
+  button.cta {
     margin-left: auto; background: var(--accent); color: var(--on-accent);
     border: 0; border-radius: 7px; padding: 10px 20px;
     font: 600 14px/1 var(--sans); cursor: pointer;
     box-shadow: var(--shadow-sm); transition: filter .15s, transform .15s;
   }
-  button:hover:not(:disabled) { filter: brightness(1.08); }
-  button:active:not(:disabled) { transform: translateY(1px); }
-  button:disabled { opacity: .42; cursor: not-allowed; }
+  button.cta:hover:not(:disabled) { filter: brightness(1.08); }
+  button.cta:active:not(:disabled) { transform: translateY(1px); }
+  button.cta:disabled { opacity: .42; cursor: not-allowed; }
 
   .note {
     margin: 13px 0 0; padding-left: 11px; border-left: 2px solid var(--rule-firm);
     font-size: 12.5px; color: var(--ink-3);
   }
   .note.blocked { border-color: var(--bad); color: var(--ink-2); }
-  .note code {
+  code, .note code {
     font: 12px var(--mono); background: var(--accent-wash);
     padding: 1px 5px; border-radius: 3px; color: var(--ink);
   }
+  pre {
+    margin: 10px 0 0; padding: 12px 14px; overflow-x: auto;
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 7px;
+    font: 12.5px/1.65 var(--mono); color: var(--ink);
+  }
+  pre code { background: none; padding: 0; }
 
   /* ------------------------------------------------------------------ rail */
-  /* The real sixteen graph nodes, grouped by the phase they belong to. This
-     is the page's strongest authored moment and it is entirely honest: it is
-     the pipeline, lighting up as the pipeline runs. */
   .rail {
     display: grid; grid-template-columns: repeat(5, 1fr);
     background: var(--card); border: 1px solid var(--rule);
     border-radius: 8px; overflow: hidden; box-shadow: var(--shadow-md);
   }
-  /* Separators are drawn by each cell rather than by gaps over a coloured
-     grid: five phases into two columns leaves an orphan cell, and the gap
-     technique renders that hole as a solid block of rule colour. */
-  .rail .phase {
-    padding: 13px 12px 14px;
-    box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule);
-  }
+  /* Separators drawn by each cell rather than by gaps over a coloured grid:
+     five phases into two columns leaves an orphan, and the gap technique
+     renders that hole as a solid block of rule colour. */
+  .rail .phase { padding: 13px 12px 14px; box-shadow: 1px 0 0 var(--rule), 0 1px 0 var(--rule); }
   .phase-name {
     font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
     color: var(--ink-3); margin-bottom: 11px;
@@ -255,11 +257,9 @@
   .phase ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
   .phase li {
     display: flex; align-items: center; gap: 7px;
-    font: 11.5px/1.35 var(--mono); color: var(--ink-3);
-    transition: color .22s;
+    font: 11.5px/1.35 var(--mono); color: var(--ink-3); transition: color .22s;
   }
   .phase li .num { color: var(--ink-4); font-size: 10px; transition: color .22s; }
-  /* The tick itself: a thin rule that fills as the stage runs. */
   .phase li .tick {
     width: 3px; height: 13px; border-radius: 2px; flex: none;
     background: var(--rule); transition: background .22s;
@@ -292,7 +292,6 @@
     #log .row { animation: slip .28s ease-out backwards; }
     @keyframes slip { from { opacity: 0; transform: translateY(4px); } }
   }
-  .empty { font: 12.5px var(--mono); color: var(--ink-3); }
 
   /* ---------------------------------------------------------------- result */
   .verdict { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -316,11 +315,6 @@
   .stat .v small { font: 11px var(--mono); color: var(--ink-3); }
 
   .block { margin-top: 20px; }
-  .block h3 {
-    font: 600 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
-    margin: 0 0 9px; color: var(--ink-3);
-  }
-  .block h3.alarm { color: var(--bad); }
   .list { list-style: none; margin: 0; padding: 0; }
   .list li {
     padding: 7px 0 7px 15px; border-top: 1px solid var(--rule);
@@ -339,11 +333,69 @@
   }
   a { color: var(--accent); }
   .dl { display: inline-block; margin-top: 10px; font: 12.5px var(--mono); }
-
   .letter p { margin: 0 0 11px; font-size: 14.5px; max-width: 68ch; }
   .letter p:last-child { margin-bottom: 0; }
+  .errors {
+    margin-top: 16px; padding: 11px 13px; border-left: 2px solid var(--bad);
+    background: var(--accent-wash); font: 12.5px/1.6 var(--mono);
+  }
 
-  .errors { margin-top: 16px; padding: 11px 13px; border-left: 2px solid var(--bad); background: var(--accent-wash); font: 12.5px/1.6 var(--mono); }
+  /* --------------------------------------------------------------- profile */
+  .picker { display: flex; gap: 11px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .picker label { font: 12px/1 var(--mono); color: var(--ink-3); }
+
+  .entry { border-top: 1px solid var(--rule); padding: 15px 0; }
+  .entry:first-of-type { border-top: 0; padding-top: 0; }
+  .entry-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .entry-head .name { font: 400 17px/1.3 var(--serif); }
+  .kind {
+    font: 600 9.5px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-4); border: 1px solid var(--rule-firm); border-radius: 3px; padding: 3px 5px;
+  }
+  .entry-sub { font: 11.5px/1.5 var(--mono); color: var(--ink-3); margin-top: 3px; }
+  .chips { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+  .chip {
+    font: 11px/1 var(--mono); padding: 4px 7px; border-radius: 3px;
+    background: var(--paper-2); color: var(--ink-2); border: 1px solid var(--rule);
+  }
+  .chip.metric { background: var(--accent-wash); border-color: transparent; color: var(--ink); }
+
+  .bullet { padding: 10px 0 10px 14px; border-left: 2px solid var(--rule); margin-top: 11px; }
+  .bullet .text { font-size: 14px; }
+  .bullet .bid { font: 10.5px/1 var(--mono); color: var(--ink-4); margin-bottom: 5px; }
+  .bullet.claim { border-left-color: var(--warn); }
+  .bullet .flag { font: 10px/1 var(--mono); color: var(--warn); text-transform: uppercase; letter-spacing: .08em; }
+
+  .setup { border-left: 3px solid var(--accent); padding: 4px 0 4px 15px; }
+  .setup ol { margin: 0; padding-left: 18px; }
+  .setup li { margin-bottom: 14px; font-size: 14px; }
+
+  /* ----------------------------------------------------------------- guide */
+  .guide h3 { margin-top: 26px; }
+  .guide h3:first-child { margin-top: 0; }
+  .guide p { max-width: 70ch; font-size: 14.5px; }
+  .guide ul { padding-left: 18px; max-width: 70ch; }
+  .guide li { margin-bottom: 8px; font-size: 14.5px; }
+  .fields { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .fields th {
+    text-align: left; font: 600 10px/1 var(--mono); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-3); padding-bottom: 8px;
+  }
+  .fields td { padding: 9px 12px 9px 0; border-top: 1px solid var(--rule); font-size: 13.5px; vertical-align: top; }
+  .fields td:first-child { white-space: nowrap; font: 12.5px var(--mono); color: var(--accent); }
+
+  /* --------------------------------------------------------------- history */
+  table.apps { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
+  table.apps th {
+    text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10.5px;
+    letter-spacing: .1em; text-transform: uppercase; padding-bottom: 7px;
+  }
+  table.apps td { padding: 8px 0; border-top: 1px solid var(--rule); }
+  table.apps td.num { text-align: right; color: var(--ink-2); }
+
+  .empty {
+    font-size: 14px; color: var(--ink-2); padding: 18px 0; max-width: 62ch;
+  }
 
   /* ---------------------------------------------------------------- footer */
   footer {
@@ -351,16 +403,8 @@
     font: 11.5px/1.6 var(--mono); color: var(--ink-2);
     display: flex; gap: 16px; flex-wrap: wrap; justify-content: space-between;
   }
-  table { width: 100%; border-collapse: collapse; font: 12.5px var(--mono); }
-  th { text-align: left; font-weight: 600; color: var(--ink-3); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; padding-bottom: 7px; }
-  td { padding: 7px 0; border-top: 1px solid var(--rule); }
-  td.num { text-align: right; color: var(--ink-2); }
 
   .hidden { display: none; }
-  .sr-only {
-    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
-    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
-  }
 </style>
 </head>
 <body>
@@ -371,64 +415,209 @@
     <div class="wordmark"><i aria-hidden="true"></i>resume-agent</div>
     <div class="facts" id="facts">loading profile…</div>
     <div class="ready" id="ready"><span class="dot"></span><span id="ready-text">checking…</span></div>
+
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Tailor</button>
+      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">Profile<span class="count" id="tab-profile-count"></span></button>
+      <button role="tab" id="tab-guide"   aria-controls="panel-guide"   aria-selected="false" data-tab="guide"   tabindex="-1">Guide</button>
+      <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
+    </nav>
   </header>
 
-  <div class="hero">
-    <p class="eyebrow">Grounded resume generation</p>
-    <h1>Every line on the page traces back to <em>something you actually did</em>.</h1>
-    <p class="lede">
-      Paste a posting. The agent retrieves from your career knowledge base, rewrites only what it
-      can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
-    </p>
+  <!-- ============================================================ TAILOR -->
+  <div role="tabpanel" id="panel-tailor" aria-labelledby="tab-tailor" tabindex="0">
+    <div class="hero">
+      <p class="eyebrow">Grounded resume generation</p>
+      <h1>Every line on the page traces back to <em>something you actually did</em>.</h1>
+      <p class="lede">
+        Paste a posting. The agent retrieves from your career knowledge base, rewrites only what it
+        can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
+      </p>
+    </div>
+
+    <main>
+      <section class="panel composer">
+        <h2><label for="jd">The posting</label></h2>
+        <textarea id="jd" placeholder="Paste the full job description here — title, responsibilities, requirements. The more of it the parser gets, the better the must-haves come out."></textarea>
+        <div class="controls">
+          <div class="opts">
+            <label class="check"><input type="checkbox" id="judge" checked> grounding judge</label>
+            <label class="check"><input type="checkbox" id="letter" checked> cover letter</label>
+            <label class="check"><input type="checkbox" id="strict"> strict</label>
+          </div>
+          <button class="cta" id="run">Tailor my resume</button>
+        </div>
+        <p class="note" id="note">
+          Running against <b id="note-profile">profile.example</b> — change it on the Profile tab.
+          A run costs roughly $0.50–1.00 the first time for a given posting on Claude, far less on
+          DeepSeek, and nothing on a re-run: parses, scores and first-pass rewrites are cached.
+        </p>
+      </section>
+
+      <section>
+        <h2>Pipeline</h2>
+        <div class="rail" id="rail" aria-label="Pipeline stages"></div>
+        <p class="rail-note" id="rail-note">Sixteen stages. The repair stages only run if they are needed.</p>
+      </section>
+
+      <section class="panel hidden" id="log-panel">
+        <h2>Run log</h2>
+        <div id="log" aria-live="polite" aria-label="Run progress"></div>
+      </section>
+
+      <section class="panel hidden" id="result">
+        <h2>Result</h2>
+        <div id="result-body"></div>
+      </section>
+
+      <section class="panel hidden" id="letterbox">
+        <h2>Cover letter <span id="letter-count"></span></h2>
+        <div class="letter" id="letter-body"></div>
+      </section>
+    </main>
   </div>
 
-  <main>
-    <section class="panel composer">
-      <h2><label for="jd">The posting</label></h2>
-      <textarea id="jd" placeholder="Paste the full job description here — title, responsibilities, requirements. The more of it the parser gets, the better the must-haves come out."></textarea>
-      <div class="controls">
-        <div class="opts">
-          <label class="check"><input type="checkbox" id="judge" checked> grounding judge</label>
-          <label class="check"><input type="checkbox" id="letter" checked> cover letter</label>
-          <label class="check"><input type="checkbox" id="strict"> strict</label>
+  <!-- =========================================================== PROFILE -->
+  <div role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" tabindex="0" class="hidden">
+    <main style="padding-top:26px">
+      <section class="panel">
+        <p class="panel-title">Your career knowledge base</p>
+        <p class="panel-lede">
+          This is the only thing the agent is allowed to draw from. Nothing reaches the resume that
+          is not traceable to a bullet below.
+        </p>
+
+        <div class="picker">
+          <label for="profile-select">Knowledge base</label>
+          <select id="profile-select"></select>
+          <span class="facts" id="profile-meta"></span>
         </div>
-        <button id="run">Tailor my resume</button>
-      </div>
-      <p class="note" id="note">
-        Roughly $0.50–1.00 the first time for a given posting, and nothing on a re-run —
-        parses, scores and first-pass rewrites are cached.
-      </p>
-    </section>
 
-    <section>
-      <h2>Pipeline</h2>
-      <div class="rail" id="rail" aria-label="Pipeline stages"></div>
-      <p class="rail-note" id="rail-note">Sixteen stages. The repair stages only run if they are needed.</p>
-    </section>
+        <div id="profile-body"></div>
+      </section>
+    </main>
+  </div>
 
-    <section class="panel hidden" id="log-panel">
-      <h2>Run log</h2>
-      <div id="log" aria-live="polite" aria-label="Run progress"></div>
-    </section>
+  <!-- ============================================================= GUIDE -->
+  <div role="tabpanel" id="panel-guide" aria-labelledby="tab-guide" tabindex="0" class="hidden">
+    <main style="padding-top:26px">
+      <section class="panel guide">
+        <p class="panel-title">Writing your knowledge base</p>
+        <p class="panel-lede">
+          The agent never invents. It retrieves, selects and rephrases what you write here, so the
+          quality of the resume is capped by the quality of these files.
+        </p>
 
-    <section class="panel hidden" id="result">
-      <h2>Result</h2>
-      <div id="result-body"></div>
-    </section>
+        <h3>Where it goes</h3>
+        <p>
+          A folder named <code>profile/</code> at the root of this repository. It is gitignored, so
+          your real career data is never committed. <code>profile.example/</code> is the public
+          fixture the tests run against — leave it alone and copy it as a starting point.
+        </p>
+        <pre><code>cp -r profile.example profile</code></pre>
+        <p>
+          Then edit every file to be about you. Reload this page and the Profile tab will show what
+          loaded — if a file has a mistake, it appears there with the error rather than silently
+          disappearing.
+        </p>
 
-    <section class="panel hidden" id="letterbox">
-      <h2>Cover letter <span id="letter-count"></span></h2>
-      <div class="letter" id="letter-body"></div>
-    </section>
+        <h3>The layout</h3>
+        <pre><code>profile/
+├── identity.yaml          name, email, phone, location, links
+├── education.yaml         institutions, degrees, dates
+├── skills.yaml            THE allow-list of technologies
+├── certifications.yaml    optional
+├── experience/
+│   └── &lt;one file per job&gt;.yaml
+├── projects/
+│   └── &lt;one file per project&gt;.yaml
+└── narratives/
+    └── &lt;topic&gt;.md         prose for the cover letter</code></pre>
 
-    <section class="panel hidden" id="apps">
-      <h2>Applications sent</h2>
-      <div id="apps-body"></div>
-    </section>
-  </main>
+        <h3>Anatomy of a bullet</h3>
+        <p>
+          Bullets are the atoms. Each one is a single achievement, written once, in full, honestly —
+          they are never chunked or split.
+        </p>
+        <pre><code>- id: exp_acme.b1
+  canonical: >
+    Cut p95 checkout latency from 820ms to 50ms across 12 endpoints
+    by repartitioning the events table on user_id.
+  metrics:
+    latency_before_ms: 820
+    latency_after_ms: 50
+    endpoints_touched: 12
+  skills: [PostgreSQL, Python]
+  themes: [backend, performance]
+  confidence: verified
+  evidence: "PR #4192, incident review 2024-03"</code></pre>
+
+        <table class="fields">
+          <thead><tr><th>Field</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td>canonical</td><td>The full truthful sentence. Every rewrite must be a rephrasing of this and nothing more.</td></tr>
+            <tr><td>metrics</td><td><strong>The only numbers allowed in a rewrite of this bullet.</strong> A figure that is not here, or derivable from here, is a fabrication and the bullet is dropped.</td></tr>
+            <tr><td>skills</td><td>Technologies involved. Every one must resolve through <code>skills.yaml</code> or the profile refuses to load.</td></tr>
+            <tr><td>themes</td><td>Free-form grouping. Selection allows at most three bullets per theme so the page is not seven variations of one skill.</td></tr>
+            <tr><td>confidence</td><td><code>verified</code>, <code>approximate</code> or <code>claim</code>. The <em>strict</em> toggle excludes <code>claim</code>.</td></tr>
+            <tr><td>evidence</td><td>Where you could prove it. Never printed — it is for you, at interview.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>skills.yaml is an allow-list</h3>
+        <p>
+          Every technology the agent is permitted to name lives here with its aliases. If a rewrite
+          mentions something absent from this file, the grounding gate rejects it. That is what stops
+          a model from quietly upgrading "a queue" into "Kafka".
+        </p>
+        <pre><code>- canonical: PostgreSQL
+  aliases: [postgres, psql, pgsql]
+  category: data
+  level: expert</code></pre>
+
+        <h3>narratives/ feeds the cover letter</h3>
+        <p>
+          Markdown files of ordinary prose — why you do this work, how you learn, the hardest bug you
+          ever chased. The letter draws voice and specifics from here. The same grounding rules apply,
+          so avoid introducing numbers or technologies that appear nowhere else.
+        </p>
+
+        <h3>How to make the resume fit a posting better</h3>
+        <ul>
+          <li><strong>Write more bullets than you need.</strong> Selection is a knapsack over a measured line budget; it can only choose from what exists.</li>
+          <li><strong>Fill in <code>metrics</code>.</strong> A bullet with no numbers can still be selected, but it cannot be made specific, and specific bullets score higher against requirements.</li>
+          <li><strong>Spread your <code>themes</code>.</strong> Three-per-theme is a hard cap. If everything is tagged <code>backend</code>, most of your bullets can never be picked together.</li>
+          <li><strong>Use real technology names</strong> in <code>skills</code> and <code>skills.yaml</code>, matching how postings spell them. That is what retrieval and the ATS keyword pass both look for.</li>
+          <li><strong>Run <em>Tailor</em> and read the gaps first.</strong> Missing must-haves tell you what the resume cannot say — sometimes the answer is a bullet you forgot to write, not a job you cannot do.</li>
+        </ul>
+
+        <h3>What never happens</h3>
+        <ul>
+          <li>No number appears that is not in that bullet's <code>metrics</code> or its canonical text.</li>
+          <li>No technology appears that is not in <code>skills.yaml</code>.</li>
+          <li>Anything that fails those checks twice is <strong>dropped and logged</strong>, never quietly kept.</li>
+          <li>Page geometry is never touched. The agent shortens content; it does not shrink margins.</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+
+  <!-- =========================================================== HISTORY -->
+  <div role="tabpanel" id="panel-history" aria-labelledby="tab-history" tabindex="0" class="hidden">
+    <main style="padding-top:26px">
+      <section class="panel">
+        <p class="panel-title">Applications sent</p>
+        <p class="panel-lede">
+          Written by the last node of every completed run. This is the one database in the project
+          that is not derived and cannot be regenerated.
+        </p>
+        <div id="apps-body"></div>
+      </section>
+    </main>
+  </div>
 
   <footer>
-    <span>Local only · nothing leaves this machine except the job description and your knowledge base, which go to the Anthropic API.</span>
+    <span>Local only · nothing leaves this machine except the job description and your knowledge base, which go to the model provider.</span>
     <span>Jake's Resume template · compiled with tectonic</span>
   </footer>
 
@@ -451,14 +640,49 @@ const PHASES = [
   { name: "Close",   nodes: ["human_review", "revision_cap", "finalize"] },
 ];
 
+const TABS = ["tailor", "profile", "guide", "history"];
+
 let source = null;
+let activeProfile = "profile.example";
+let profileOptions = [];
 
-// The note starts as the cost estimate and is replaced by the blocker text when
-// something is missing. Captured so the ready path can put it back rather than
-// leaving a stale "key is not set" message under a working Run button.
-const COST_NOTE = $("note").innerHTML;
+/* --------------------------------------------------------------- tabs */
 
-/* ------------------------------------------------------------------ rail */
+function selectTab(name) {
+  if (!TABS.includes(name)) name = "tailor";
+  for (const tab of TABS) {
+    const button = $(`tab-${tab}`);
+    const panel = $(`panel-${tab}`);
+    const on = tab === name;
+    button.setAttribute("aria-selected", String(on));
+    // Roving tabindex: only the selected tab is in the tab order, so Tab moves
+    // past the tablist into the panel rather than through four buttons.
+    button.tabIndex = on ? 0 : -1;
+    panel.classList.toggle("hidden", !on);
+  }
+  // The hash makes a tab linkable and survives a reload, which matters here
+  // because reading the Guide and editing YAML is an alt-tab loop.
+  if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
+}
+
+function wireTabs() {
+  const buttons = TABS.map((t) => $(`tab-${t}`));
+  buttons.forEach((button) => {
+    button.addEventListener("click", () => selectTab(button.dataset.tab));
+    button.addEventListener("keydown", (e) => {
+      const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (!step) return;
+      e.preventDefault();
+      const next = buttons[(buttons.indexOf(button) + step + buttons.length) % buttons.length];
+      selectTab(next.dataset.tab);
+      next.focus();
+    });
+  });
+  window.addEventListener("hashchange", () => selectTab(location.hash.slice(1)));
+  selectTab(location.hash.slice(1) || "tailor");
+}
+
+/* --------------------------------------------------------------- rail */
 
 function buildRail() {
   let n = 0;
@@ -481,9 +705,6 @@ function resetRail() {
 function markNode(node, state) {
   const li = $("rail").querySelector(`li[data-node="${CSS.escape(node)}"]`);
   if (!li) return;
-  // A node that finished must not be pulled back to "active" by a later loop
-  // pass -- but a repair loop genuinely re-enters it, so active always wins
-  // while the run is live.
   li.dataset.state = state;
   if (state === "active") li.setAttribute("aria-current", "step");
   else li.removeAttribute("aria-current");
@@ -498,22 +719,162 @@ function summariseRail() {
     : `All ${all.length} stages ran.`;
 }
 
-/* --------------------------------------------------------------- profile */
+/* ------------------------------------------------------------ profiles */
 
-async function loadProfile() {
+async function loadProfiles() {
+  profileOptions = [];
   try {
-    const p = await (await fetch("/api/profile")).json();
+    profileOptions = await (await fetch("/api/profiles")).json();
+  } catch { /* handled below by the empty list */ }
+
+  const select = $("profile-select");
+  select.innerHTML = profileOptions.map((o) =>
+    `<option value="${esc(o.name)}"${o.loads ? "" : " disabled"}>` +
+    `${esc(o.name)}${o.loads ? ` — ${o.bullets} bullets` : " — does not load"}</option>`).join("");
+
+  // Prefer a real profile over the shipped fixture. Someone who has written
+  // one should not have to pick it every time they open the page.
+  const remembered = safeGet("resume-agent.profile");
+  const usable = profileOptions.filter((o) => o.loads);
+  const chosen =
+    usable.find((o) => o.name === remembered) ||
+    usable.find((o) => !o.is_example) ||
+    usable[0];
+
+  if (chosen) {
+    activeProfile = chosen.name;
+    select.value = chosen.name;
+  }
+  showActiveProfile();
+  $("tab-profile-count").textContent = usable.length > 1 ? `(${usable.length})` : "";
+
+  renderProfileBody();
+}
+
+/* The note is rewritten wholesale when something is blocking a run, which
+   destroys the <b> this writes into. Guarded here rather than at three call
+   sites: without it, changing profile while no key is set throws, and the page
+   silently stops updating. */
+function showActiveProfile() {
+  const el = $("note-profile");
+  if (el) el.textContent = activeProfile;
+}
+
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function safeSet(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* private window; not important */ }
+}
+
+async function renderProfileBody() {
+  if (!profileOptions.length) {
+    $("profile-body").innerHTML = setupHtml();
+    $("profile-meta").textContent = "";
+    return;
+  }
+
+  // A directory that looks like a profile but fails to load is reported above
+  // the good one rather than hidden. A validation error is the likeliest thing
+  // to go wrong while someone is first writing their YAML, and "it vanished"
+  // is far harder to act on than "it is here and says what is wrong".
+  const broken = profileOptions.filter((o) => !o.loads).map((o) =>
+    `<div class="errors"><b>${esc(o.name)}</b> failed to load:<br>${esc(o.error)}</div>`).join("");
+
+  let detail;
+  try {
+    const response = await fetch(`/api/profile/detail?profile=${encodeURIComponent(activeProfile)}`);
+    if (!response.ok) throw new Error(await response.text());
+    detail = await response.json();
+  } catch (e) {
+    $("profile-body").innerHTML = broken + `<div class="errors">${esc(e.message)}</div>`;
+    return;
+  }
+
+  $("profile-meta").innerHTML =
+    `${esc(detail.person)} · ${esc(detail.email)} · ${esc(detail.location)}`;
+
+  const bulletCount = detail.entries.reduce((n, e) => n + e.bullets.length, 0);
+
+  const entries = detail.entries.map((entry) => `
+    <div class="entry">
+      <div class="entry-head">
+        <span class="name">${esc(entry.heading)}</span>
+        <span class="kind">${esc(entry.kind)}</span>
+      </div>
+      <div class="entry-sub">${esc(entry.subheading)} · <span style="color:var(--ink-4)">${esc(entry.id)}</span></div>
+      ${entry.tech.length ? `<div class="chips">${entry.tech.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}
+      ${entry.bullets.map(bulletHtml).join("")}
+    </div>`).join("");
+
+  const skills = Object.entries(detail.skills_by_category).map(([category, names]) => `
+    <div class="block">
+      <h3>${esc(category)}</h3>
+      <div class="chips">${names.map((n) => `<span class="chip">${esc(n)}</span>`).join("")}</div>
+    </div>`).join("");
+
+  $("profile-body").innerHTML = broken +
+    `<div class="stats">
+       <div class="stat"><div class="k">entries</div><div class="v">${detail.entries.length}</div></div>
+       <div class="stat"><div class="k">bullets</div><div class="v">${bulletCount}</div></div>
+       <div class="stat"><div class="k">skills</div><div class="v">${Object.values(detail.skills_by_category).flat().length}</div></div>
+       <div class="stat"><div class="k">narratives</div><div class="v">${detail.narratives.length}</div></div>
+     </div>
+     <div class="block"><h3>Experience and projects</h3>${entries}</div>
+     <div class="block"><h3>Skills — the allow-list</h3>${skills}</div>
+     <div class="block"><h3>Narratives</h3>
+       ${detail.narratives.length
+         ? `<div class="chips">${detail.narratives.map((n) => `<span class="chip">${esc(n)}.md</span>`).join("")}</div>`
+         : `<p class="empty">No narratives. The cover letter will still be written, but with less of your voice in it — see the Guide.</p>`}
+     </div>`;
+}
+
+function bulletHtml(bullet) {
+  const metrics = Object.entries(bullet.metrics)
+    .map(([k, v]) => `<span class="chip metric">${esc(k)} = ${esc(v)}</span>`).join("");
+  return `
+    <div class="bullet${bullet.confidence === "claim" ? " claim" : ""}">
+      <div class="bid">${esc(bullet.id)}${bullet.confidence !== "verified"
+        ? ` · <span class="flag">${esc(bullet.confidence)}</span>` : ""}</div>
+      <div class="text">${esc(bullet.canonical)}</div>
+      ${metrics || bullet.skills.length || bullet.themes.length ? `<div class="chips">
+        ${metrics}
+        ${bullet.skills.map((s) => `<span class="chip">${esc(s)}</span>`).join("")}
+        ${bullet.themes.map((t) => `<span class="chip">#${esc(t)}</span>`).join("")}
+      </div>` : ""}
+    </div>`;
+}
+
+function setupHtml() {
+  return `
+    <div class="setup">
+      <p><strong>No knowledge base found.</strong> The agent has nothing to draw from yet. Three steps:</p>
+      <ol>
+        <li><strong>Copy the example.</strong> It is a complete, valid profile you can edit in place.
+          <pre><code>cp -r profile.example profile</code></pre></li>
+        <li><strong>Make every file about you.</strong> Start with <code>identity.yaml</code> and one
+          job in <code>experience/</code>. The Guide tab explains each field and what makes a bullet
+          usable.</li>
+        <li><strong>Reload this page.</strong> Your profile appears here with everything that loaded.
+          If a file has a mistake it is listed with the error rather than silently skipped.</li>
+      </ol>
+      <p><code>profile/</code> is gitignored — your real career data is never committed.</p>
+    </div>`;
+}
+
+/* -------------------------------------------------------------- header */
+
+async function loadProfileSummary() {
+  try {
+    const p = await (await fetch(`/api/profile?profile=${encodeURIComponent(activeProfile)}`)).json();
     $("facts").innerHTML =
       `${esc(p.name)} · <b>${p.bullets}</b> bullets · <b>${p.experience}</b> roles · ` +
-      `<b>${p.projects}</b> projects · <b>${p.skills}</b> skills`;
+      `<b>${p.projects}</b> projects`;
 
-    // Say what will fail BEFORE the button is pressed, rather than after a wait,
-    // and say how to fix it -- a disabled button with no remedy is a dead end.
     // The variable to set depends on the configured provider, so the page asks
     // the server which one rather than naming a vendor here. Telling a DeepSeek
-    // user to set the Anthropic variable is worse than saying nothing: they
-    // would set it, and it still would not work. A test keeps this file free of
-    // vendor key names entirely.
+    // user to set the Anthropic variable is worse than saying nothing. A test
+    // keeps this file free of vendor key names entirely.
     const missing = [];
     if (!p.has_credentials) missing.push(`${p.credentials_var} is not set`);
     if (!p.has_compiler) missing.push("no LaTeX compiler on PATH");
@@ -531,13 +892,12 @@ async function loadProfile() {
     } else {
       $("ready").className = "ready is-ready";
       $("ready-text").textContent = `ready · ${p.provider}`;
-      // Set explicitly rather than left alone. The button starts enabled in the
-      // markup, so today this branch happens to be a no-op -- but a function
-      // that disables in one branch and is silent in the other only works while
-      // it is called exactly once, which is not a property worth relying on.
+      // Set explicitly rather than left alone: a function that disables in one
+      // branch and is silent in the other only works while it is called once.
       $("run").disabled = false;
       $("note").className = "note";
       $("note").innerHTML = COST_NOTE;
+      showActiveProfile();
     }
   } catch {
     $("facts").textContent = "could not load profile";
@@ -546,34 +906,45 @@ async function loadProfile() {
   }
 }
 
+const COST_NOTE = $("note").innerHTML;
+
+/* ------------------------------------------------------------- history */
+
 async function loadApplications() {
+  let rows = [];
   try {
-    const rows = await (await fetch("/api/applications?limit=8")).json();
-    if (!rows.length) return;  // no honest content, so no section
-    $("apps").classList.remove("hidden");
+    rows = await (await fetch("/api/applications?limit=25")).json();
+  } catch { /* the tracker is a nicety; never disturb the run flow */ }
+
+  $("tab-history-count").textContent = rows.length ? `(${rows.length})` : "";
+
+  if (!rows.length) {
     $("apps-body").innerHTML =
-      `<table><thead><tr><th>Date</th><th>Company</th><th>Role</th>` +
-      `<th class="num">Fit</th><th class="num">Outcome</th></tr></thead><tbody>` +
-      rows.map((r) => `<tr>` +
-        `<td>${esc(r.applied_on.slice(0, 10))}</td>` +
-        `<td>${esc(r.company)}</td>` +
-        `<td>${esc(r.title)}</td>` +
-        `<td class="num">${r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—"}</td>` +
-        `<td class="num">${esc(r.outcome ?? "—")}</td></tr>`).join("") +
-      `</tbody></table>`;
-  } catch {
-    /* The tracker is a nicety; a failure here must not disturb the run flow. */
+      `<p class="empty">Nothing sent yet. A row is written here automatically when a run finishes,
+       recording the posting, the fit, and which bullets went out — so that later you can ask which
+       bullets appear in the applications that got callbacks.</p>`;
+    return;
   }
+
+  $("apps-body").innerHTML =
+    `<table class="apps"><thead><tr><th>Date</th><th>Company</th><th>Role</th>` +
+    `<th class="num">Fit</th><th class="num">Outcome</th></tr></thead><tbody>` +
+    rows.map((r) => `<tr>` +
+      `<td>${esc(r.applied_on.slice(0, 10))}</td>` +
+      `<td>${esc(r.company)}</td>` +
+      `<td>${esc(r.title)}</td>` +
+      `<td class="num">${r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—"}</td>` +
+      `<td class="num">${esc(r.outcome ?? "—")}</td></tr>`).join("") +
+    `</tbody></table>`;
 }
 
-/* ------------------------------------------------------------------- log */
+/* ----------------------------------------------------------------- log */
 
 function log(kind, name, detail, elapsed) {
   const cls = kind === "error" ? "is-error"
             : kind === "status" ? "is-status"
             : kind.startsWith("model") ? "is-model" : "";
-  const mark = kind === "error" ? "!"
-             : kind.endsWith("_start") ? "→" : "✓";
+  const mark = kind === "error" ? "!" : kind.endsWith("_start") ? "→" : "✓";
   const row = document.createElement("div");
   row.className = "row " + cls;
   row.innerHTML =
@@ -585,7 +956,7 @@ function log(kind, name, detail, elapsed) {
   $("log").scrollTop = $("log").scrollHeight;
 }
 
-/* ---------------------------------------------------------------- result */
+/* -------------------------------------------------------------- result */
 
 function renderResult(r) {
   $("result").classList.remove("hidden");
@@ -615,7 +986,8 @@ function renderResult(r) {
   // is weaker than it could have been.
   if (r.must_have_gaps?.length) {
     html += `<div class="block"><h3 class="alarm">Must-haves not covered</h3>` +
-            `<ul class="list alarm">${r.must_have_gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></div>`;
+            `<ul class="list alarm">${r.must_have_gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` +
+            `<p class="note">A gap is sometimes a bullet you have not written yet rather than a job you cannot do — check the Profile tab.</p></div>`;
   }
   if (r.dropped_bullets?.length) {
     html += `<div class="block"><h3 class="alarm">Dropped for failing grounding</h3>` +
@@ -645,7 +1017,7 @@ function renderResult(r) {
   }
 }
 
-/* ------------------------------------------------------------------- run */
+/* ----------------------------------------------------------------- run */
 
 async function start() {
   const jd = $("jd").value.trim();
@@ -665,16 +1037,13 @@ async function start() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       jd,
+      profile: activeProfile,
       use_judge: $("judge").checked,
       write_cover_letter: $("letter").checked,
       strict: $("strict").checked,
     }),
   });
-  if (!res.ok) {
-    log("error", "could not start", await res.text());
-    finish();
-    return;
-  }
+  if (!res.ok) { log("error", "could not start", await res.text()); finish(); return; }
 
   const { run_id } = await res.json();
 
@@ -704,14 +1073,23 @@ function finish() {
   $("run").textContent = "Tailor my resume";
 }
 
+/* ----------------------------------------------------------------- init */
+
 $("run").addEventListener("click", start);
 // Ctrl/Cmd+Enter from the textarea, because that is where the hands already are.
 $("jd").addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !$("run").disabled) start();
 });
+$("profile-select").addEventListener("change", async (e) => {
+  activeProfile = e.target.value;
+  safeSet("resume-agent.profile", activeProfile);
+  showActiveProfile();
+  await Promise.all([renderProfileBody(), loadProfileSummary()]);
+});
 
+wireTabs();
 buildRail();
-loadProfile();
+loadProfiles().then(loadProfileSummary);
 loadApplications();
 </script>
 </body>

@@ -19,7 +19,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from resume_agent.api.app import GRAPH_NODES, create_app
+from resume_agent.api.app import GRAPH_NODES, create_app, discover_profiles
 from resume_agent.api.models import summarise_state
 from resume_agent.models.fit import FitReport
 from resume_agent.models.job import JobSpec, JobSpecFields, Requirement
@@ -153,6 +153,58 @@ def test_a_bad_provider_name_blocks_the_page_rather_than_500ing(
     assert response.json()["has_credentials"] is False
 
 
+def test_the_page_has_four_wired_up_tabs() -> None:
+    """Tabs are only an improvement if they are reachable. Each one needs a
+    button and the panel it names, or a keyboard user lands on a dead control."""
+    text = page_source()
+
+    for tab in ("tailor", "profile", "guide", "history"):
+        assert f'id="tab-{tab}"' in text
+        assert f'id="panel-{tab}"' in text
+        assert f'aria-controls="panel-{tab}"' in text
+
+
+def test_the_tabs_are_a_real_tablist() -> None:
+    """`role="tablist"` without roving tabindex and arrow keys is a div that
+    looks like tabs to a screen reader and behaves like nothing."""
+    text = page_source()
+
+    assert 'role="tablist"' in text
+    assert 'role="tabpanel"' in text
+    assert "ArrowRight" in text and "ArrowLeft" in text
+
+
+def test_the_guide_says_where_the_knowledge_base_goes() -> None:
+    """The question this tab exists to answer. `profile/` is gitignored and is
+    not created by anything, so nothing else on disk tells you."""
+    text = page_source()
+
+    assert "cp -r profile.example profile" in text
+    assert "gitignored" in text
+
+
+def test_the_run_request_carries_the_chosen_profile() -> None:
+    """The picker is decoration unless the value reaches the run."""
+    assert "profile: activeProfile," in page_source()
+
+
+def test_the_profile_name_is_only_written_through_its_guard() -> None:
+    """Found in the browser, not in review.
+
+    The cost note is rewritten wholesale when something blocks a run, which
+    destroys the `<b id="note-profile">` inside it. Writing to that element
+    directly then throws, and because it happens inside `loadProfiles` the whole
+    page stops updating with nothing in the UI to say why. `showActiveProfile`
+    is the guarded accessor; nothing may bypass it.
+    """
+    text = page_source()
+
+    assert "function showActiveProfile()" in text
+    assert '$("note-profile").textContent =' not in text.replace(
+        'const el = $("note-profile");', ""
+    ), "write to note-profile outside showActiveProfile()"
+
+
 def test_the_page_hardcodes_no_vendor_key_name() -> None:
     """The blocked state is rendered from `credentials_var`, so a vendor
     variable spelled out in the page would be a bug that only shows up for
@@ -167,6 +219,74 @@ def test_an_unknown_profile_is_a_400_not_a_500(client: TestClient) -> None:
 
 def test_applications_endpoint(client: TestClient) -> None:
     assert client.get("/api/applications").status_code == 200
+
+
+# ===========================================================================
+# Choosing and browsing a knowledge base
+# ===========================================================================
+
+
+def test_profiles_are_discovered(client: TestClient) -> None:
+    names = [p["name"] for p in client.get("/api/profiles").json()]
+    assert "profile.example" in names
+
+
+def test_a_profile_that_does_not_load_is_listed_with_its_error(tmp_path: Path) -> None:
+    """Hiding it would be worse. A validation error is the likeliest thing to go
+    wrong while someone is first writing their YAML, and "my profile vanished
+    from the dropdown" is far harder to act on than an error next to its name."""
+    broken = tmp_path / "profile"
+    broken.mkdir()
+    (broken / "identity.yaml").write_text("name: [this is not an identity", encoding="utf-8")
+
+    options = discover_profiles(tmp_path)
+
+    assert len(options) == 1
+    assert options[0].name == "profile" and options[0].loads is False
+    assert options[0].error
+
+
+def test_real_profiles_sort_above_the_example(tmp_path: Path) -> None:
+    for name in ("profile.example", "profile"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "identity.yaml").write_text("broken", encoding="utf-8")
+
+    assert [o.name for o in discover_profiles(tmp_path)] == ["profile", "profile.example"]
+
+
+def test_a_directory_without_identity_is_not_a_profile(tmp_path: Path) -> None:
+    (tmp_path / "out").mkdir()
+    (tmp_path / "out" / "resume.pdf").write_bytes(b"%PDF")
+
+    assert discover_profiles(tmp_path) == []
+
+
+def test_profile_detail_exposes_the_bullets(client: TestClient) -> None:
+    """The Profile tab's whole purpose: until now the knowledge base was
+    invisible from the UI, so you could not tell whether a bullet you had
+    written was being read at all."""
+    detail = client.get("/api/profile/detail").json()
+
+    assert detail["person"] == "John Doe"
+    assert len(detail["entries"]) == 5
+    assert sum(len(e["bullets"]) for e in detail["entries"]) == 13
+
+    bullets = [b for e in detail["entries"] for b in e["bullets"]]
+    with_metrics = [b for b in bullets if b["metrics"]]
+    assert with_metrics, "no metrics reached the page"
+    # Stringified on the wire: the page renders them either way, and the
+    # grounding gate compares them as text.
+    assert all(isinstance(v, str) for b in with_metrics for v in b["metrics"].values())
+
+
+def test_profile_detail_groups_skills_by_category(client: TestClient) -> None:
+    categories = client.get("/api/profile/detail").json()["skills_by_category"]
+    assert "language" in categories
+    assert categories["language"] == sorted(categories["language"])
+
+
+def test_profile_detail_on_an_unknown_profile_is_a_400(client: TestClient) -> None:
+    assert client.get("/api/profile/detail", params={"profile": "nope"}).status_code == 400
 
 
 def test_unknown_run_is_404(client: TestClient) -> None:

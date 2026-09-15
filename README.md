@@ -95,6 +95,44 @@ Windows, `~/.cache/resume-agent/fastembed` elsewhere. After that everything is
 offline -- no API key, no per-query cost. Override the location with the
 `RESUME_AGENT_MODEL_CACHE` environment variable.
 
+### Your knowledge base
+
+Everything the agent is allowed to say about you lives in a folder called
+**`profile/`** at the root of this repository. It does not exist until you make
+it, and it is gitignored — your real career data is never committed.
+
+```bash
+cp -r profile.example profile
+```
+
+Then edit every file to be about you. `profile.example/` is the public fixture
+the tests load; leave it in place.
+
+```
+profile/
+├── identity.yaml          name, email, phone, location, links
+├── education.yaml         institutions, degrees, dates
+├── skills.yaml            THE allow-list of technologies
+├── certifications.yaml    optional
+├── experience/            one YAML file per job
+├── projects/              one YAML file per project
+└── narratives/            markdown prose, feeds the cover letter
+```
+
+Two files do more work than the rest. **`skills.yaml`** is an allow-list: if a
+tailored bullet names a technology that is not in it, the grounding gate rejects
+the bullet. And each bullet's **`metrics`** dict is the complete set of numbers a
+rewrite of that bullet may contain — anything else is a fabrication and the
+bullet is dropped, loudly.
+
+The **Guide** tab in the web UI explains every field, and the **Profile** tab
+shows exactly what loaded, so you can see whether a bullet you wrote is being
+read. A file with a mistake is listed there with its error rather than silently
+skipped.
+
+Point any command at it with `--profile profile`, or pick it from the dropdown
+on the Profile tab, which is remembered between visits.
+
 ### Model provider
 
 The project was built and tuned against Claude, and Anthropic is still the

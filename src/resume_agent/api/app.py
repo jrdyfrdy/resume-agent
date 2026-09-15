@@ -38,10 +38,13 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from resume_agent.api.models import (
     ApplicationSummary,
     NodeEvent,
+    ProfileDetail,
+    ProfileOption,
     ProfileSummary,
     RunCreated,
     RunRequest,
     RunSummary,
+    build_profile_detail,
     summarise_state,
 )
 from resume_agent.graph.build import build_graph, initial_state
@@ -71,6 +74,57 @@ GRAPH_NODES = {
 # How often the SSE endpoint checks for new events. Node transitions take
 # seconds, so a tenth of a second of latency is invisible.
 POLL_INTERVAL_S = 0.1
+
+# The shipped fixture. Kept as the server-side default so the endpoints behave
+# the same on every machine; the page prefers `profile/` when it finds one,
+# which is a decision about presentation rather than about the API.
+DEFAULT_PROFILE = "profile.example"
+
+# The file whose absence means "this directory is not a knowledge base". Chosen
+# because it is required and is the first thing `load_profile` reads.
+PROFILE_MARKER = "identity.yaml"
+
+
+def discover_profiles(root: Path | None = None) -> list[ProfileOption]:
+    """Every knowledge base sitting next to the project.
+
+    A directory that looks like a profile but fails to load is listed **with its
+    error** rather than filtered out. "My profile is missing from the dropdown"
+    is a much harder thing to debug than "my profile is listed and tells me what
+    is wrong with it", and a validation error here is the single most likely
+    thing to go wrong while someone is first writing their YAML.
+    """
+    base = root or Path.cwd()
+    options: list[ProfileOption] = []
+
+    for candidate in sorted(base.iterdir() if base.is_dir() else []):
+        if not candidate.is_dir() or not (candidate / PROFILE_MARKER).is_file():
+            continue
+        try:
+            loaded = load_profile(candidate)
+        except ProfileLoadError as exc:
+            options.append(
+                ProfileOption(
+                    name=candidate.name,
+                    is_example=candidate.name.endswith(".example"),
+                    loads=False,
+                    error=str(exc),
+                )
+            )
+            continue
+        options.append(
+            ProfileOption(
+                name=candidate.name,
+                is_example=candidate.name.endswith(".example"),
+                loads=True,
+                bullets=len(loaded.all_bullets()),
+            )
+        )
+
+    # Real profiles first: someone who has written one wants it at the top, and
+    # the example is a reference rather than a thing you run against.
+    options.sort(key=lambda option: (option.is_example, option.name))
+    return options
 
 
 @dataclass
@@ -105,7 +159,7 @@ def create_app(graph_factory=build_graph) -> FastAPI:
         return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
     @app.get("/api/profile", response_model=ProfileSummary)
-    async def profile_summary(profile: str = "profile.example") -> ProfileSummary:
+    async def profile_summary(profile: str = DEFAULT_PROFILE) -> ProfileSummary:
         try:
             loaded = load_profile(Path(profile))
         except ProfileLoadError as exc:
@@ -132,6 +186,19 @@ def create_app(graph_factory=build_graph) -> FastAPI:
             provider=provider_name,
             credentials_var=credentials_var,
         )
+
+    @app.get("/api/profiles", response_model=list[ProfileOption])
+    async def profiles() -> list[ProfileOption]:
+        """Every knowledge base on disk that a run could point at."""
+        return discover_profiles()
+
+    @app.get("/api/profile/detail", response_model=ProfileDetail)
+    async def profile_detail(profile: str = DEFAULT_PROFILE) -> ProfileDetail:
+        try:
+            loaded = load_profile(Path(profile))
+        except ProfileLoadError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return build_profile_detail(profile, loaded)
 
     @app.get("/api/applications", response_model=list[ApplicationSummary])
     async def applications(limit: int = 20) -> list[ApplicationSummary]:

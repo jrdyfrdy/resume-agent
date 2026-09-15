@@ -23,7 +23,7 @@ from resume_agent.graph.nodes.parse_jd import (
     parse_job_description,
 )
 from resume_agent.jd_cache import JobSpecCache, jd_cache_key
-from resume_agent.llm import has_credentials, load_prompt, prompt_version
+from resume_agent.llm import has_credentials, load_prompt, model_for, prompt_version
 from resume_agent.models.job import JobSpec, JobSpecFields, job_description_hash
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -202,7 +202,13 @@ def test_corrupt_cache_entry_is_treated_as_a_miss(
     raw = "Some posting text"
     parse_job_description(raw, llm=fake_llm, cache=cache)
 
-    key = jd_cache_key(raw, "claude-opus-5", prompt_version(PROMPT_NAME))
+    # `model_for()`, not a hardcoded id: the cache key follows the active
+    # provider, so pinning Anthropic here made this test pass only on a machine
+    # with no other key set. It broke the moment a DeepSeek key appeared -- by
+    # corrupting a file the parse was no longer looking at, which made the
+    # second call a cache *hit* and the assertion below fail for a reason that
+    # had nothing to do with corrupt entries.
+    key = jd_cache_key(raw, model_for(), prompt_version(PROMPT_NAME))
     cache.path_for(key).write_text("{ not json", encoding="utf-8")
 
     _, hit = parse_job_description(raw, llm=fake_llm, cache=cache)
