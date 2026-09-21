@@ -123,8 +123,38 @@
   }
   .facts { font: 12px/1 var(--mono); color: var(--ink-2); }
   .facts b { font-weight: 600; color: var(--ink); }
+  /* ------------------------------------------------- the Advanced switch
+
+     Everything expert-facing carries `.adv-only` and is hidden unless the
+     switch is on. Done in CSS against one attribute on <body> rather than by
+     re-rendering, because much of what it hides -- achievement ids, entry ids --
+     is written by template literals deep inside renderProfileBody, and a class
+     costs nothing there while a branch would have to be threaded through every
+     one of them. Toggling therefore refetches nothing. */
+  /* One rule, and it *hides* rather than shows. Two reasons, both learned the
+     hard way:
+
+     A plain `.adv-only { display: none }` loses to `label.check { display: flex }`
+     on specificity, so the expert controls stayed on screen with the switch off.
+     Scoping the hide to `body:not([data-advanced])` makes it (0,2,1), which wins.
+
+     And because the rule simply stops matching when the switch is on, each
+     element falls back to its own `display` -- flex row, table row, list item,
+     inline span. Showing them with `display: revert` instead would throw those
+     away and force everything to the user-agent default. It also means `.hidden`
+     keeps working untouched: "not now" and "not for you" never collide. */
+  body:not([data-advanced]) .adv-only { display: none; }
+
+  .advanced-switch {
+    margin-left: auto; display: flex; align-items: center; gap: 7px;
+    font: 12px/1 var(--mono); color: var(--ink-2); cursor: pointer;
+    user-select: none;
+  }
+  .advanced-switch input { accent-color: var(--accent); margin: 0; }
+  body[data-advanced] .advanced-switch { color: var(--accent); }
+
   .ready {
-    margin-left: auto; font: 12px/1 var(--mono);
+    font: 12px/1 var(--mono);
     display: flex; align-items: center; gap: 7px;
   }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); flex: none; }
@@ -136,9 +166,15 @@
   .tabs {
     display: flex; gap: 2px; width: 100%; margin-top: 14px;
     border-bottom: 1px solid var(--rule);
+    /* Scrolls rather than clips. The plain-English tab names are longer than
+       the one-word ones they replaced, and at 375px the last tab fell off the
+       edge of the screen with nothing to suggest it was there. */
+    overflow-x: auto; scrollbar-width: none;
   }
+  .tabs::-webkit-scrollbar { display: none; }
   .tabs button {
     appearance: none; background: none; border: 0; cursor: pointer;
+    flex: none; white-space: nowrap;
     padding: 9px 15px; margin: 0; border-radius: 6px 6px 0 0;
     font: 600 13.5px/1 var(--sans); letter-spacing: 0;
     color: var(--ink-3); border-bottom: 2px solid transparent;
@@ -228,6 +264,13 @@
     font: 12.5px/1 var(--mono); color: var(--ink-2); cursor: pointer;
   }
   label.check input { accent-color: var(--accent); margin: 0; }
+  /* Sits inside a `check` label beside the checkboxes, so it inherits the same
+     monospaced scale rather than the browser's default control font. */
+  label.check select {
+    font: 12.5px/1 var(--mono); color: var(--ink);
+    background: var(--paper); border: 1px solid var(--rule);
+    border-radius: 4px; padding: 3px 4px; cursor: pointer;
+  }
 
   button.cta {
     margin-left: auto; background: var(--accent); color: var(--on-accent);
@@ -273,7 +316,10 @@
     display: flex; align-items: center; gap: 7px;
     font: 12px/1.45 var(--mono); color: var(--ink-3); transition: color .22s;
   }
-  .phase li .num { color: var(--ink-4); font-size: 12px; transition: color .22s; }
+  /* --ink-3, not --ink-4: the step numbers are small text a sweep measures, and
+     --ink-4 is documented as a 3.1:1 token for architectural markers. Same
+     judgment already made for the file-group labels below. */
+  .phase li .num { color: var(--ink-3); font-size: 12px; transition: color .22s; }
   .phase li .tick {
     width: 3px; height: 13px; border-radius: 2px; flex: none;
     background: var(--rule); transition: background .22s;
@@ -289,7 +335,46 @@
     @keyframes beat { 50% { opacity: .32; } }
   }
   .rail-note { margin: 12px 0 0; font: 13px/1.5 var(--sans); color: var(--ink-3); }
-  @media (max-width: 860px) { .rail { grid-template-columns: repeat(2, 1fr); } }
+
+  /* ------------------------------------------------- the five-step strip
+
+     Deliberately the same state vocabulary as the rail above (idle / active /
+     done, a tick that turns green) so the two views of one run look like the
+     same thing at two magnifications rather than two unrelated widgets. */
+  /* Machine-readable identifiers -- entry and achievement ids. Mono is correct
+     here for the reason the label audit gave: this really is machine output,
+     unlike the form labels that were dressed up to look like it. */
+  .ident { font-family: var(--mono); color: var(--ink-3); }
+  /* With the id hidden, an achievement that carries no confidence flag
+     leaves this row empty -- collapse it rather than leave its margin. */
+  body:not([data-advanced]) .bid:not(:has(.flag)) { display: none; }
+
+  .steps {
+    list-style: none; margin: 0; padding: 14px 16px;
+    background: var(--card); border: 1px solid var(--rule); border-radius: 6px;
+    display: flex; flex-wrap: wrap; gap: 10px 22px;
+  }
+  .steps li {
+    display: flex; align-items: center; gap: 8px;
+    font: 13.5px/1.4 var(--sans); color: var(--ink-3); transition: color .22s;
+  }
+  .steps li .tick {
+    width: 7px; height: 7px; border-radius: 50%; flex: none;
+    background: var(--rule); transition: background .22s;
+  }
+  .steps li[data-state="active"] { color: var(--accent); font-weight: 600; }
+  .steps li[data-state="active"] .tick { background: var(--accent); }
+  .steps li[data-state="done"] { color: var(--ink); }
+  .steps li[data-state="done"] .tick { background: var(--ok); }
+  @media (prefers-reduced-motion: no-preference) {
+    .steps li[data-state="active"] .tick { animation: beat 1.15s ease-in-out infinite; }
+  }
+  @media (max-width: 860px) {
+    .rail { grid-template-columns: repeat(2, 1fr); }
+    /* Five phases into two columns leaves the last one alone on its row beside
+       a visibly empty cell. Let it span instead. */
+    .rail .phase:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  }
   @media (max-width: 460px) { .rail { grid-template-columns: 1fr; } }
 
   /* ------------------------------------------------------------------- log */
@@ -553,7 +638,10 @@
 
   .bullet { padding: 10px 0 10px 14px; border-left: 2px solid var(--rule); margin-top: 11px; }
   .bullet .text { font-size: 14px; }
-  .bullet .bid { font: 12px/1 var(--mono); color: var(--ink-4); margin-bottom: 6px; }
+  /* --ink-3, not --ink-4: a bullet id is text you are meant to read and quote
+     -- the chat cites them, the tracker records them, and they are how you
+     find the achievement a run dropped. --ink-4 measures 3.2:1 here. */
+  .bullet .bid { font: 12px/1 var(--mono); color: var(--ink-3); margin-bottom: 6px; }
   .bullet.claim { border-left-color: var(--warn); }
   .bullet .flag { font: 12px/1 var(--sans); color: var(--warn); }
 
@@ -597,6 +685,40 @@
 
   .hidden { display: none; }
 
+  /* ------------------------------------------------------------ dialog */
+  dialog#modal {
+    border: 1px solid var(--rule-firm); border-radius: 8px;
+    background: var(--card); color: var(--ink);
+    padding: 22px 24px; max-width: 30rem; width: calc(100vw - 32px);
+    box-shadow: var(--shadow-lg);
+  }
+  dialog#modal::backdrop { background: rgba(0, 0, 0, .45); }
+  dialog#modal h2 { margin: 0 0 12px; font: 600 17px/1.3 var(--sans); }
+  dialog#modal p { margin: 0 0 14px; font-size: 14px; color: var(--ink-2); }
+  dialog#modal label.field { display: block; margin-bottom: 14px; }
+  dialog#modal label.field > span {
+    display: block; margin-bottom: 6px; font: 600 13px/1.3 var(--sans);
+  }
+  dialog#modal input[type="text"] {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--rule);
+    border-radius: 6px; background: var(--paper); color: var(--ink);
+    font: 14px/1.4 var(--sans);
+  }
+  dialog#modal input[type="text"]:focus-visible { outline: 2px solid var(--accent); }
+  /* A real choice with both outcomes named, replacing "leave the box blank". */
+  dialog#modal .choice {
+    display: flex; gap: 9px; align-items: flex-start;
+    padding: 10px 12px; border: 1px solid var(--rule); border-radius: 6px;
+    margin-bottom: 8px; cursor: pointer;
+  }
+  dialog#modal .choice input { accent-color: var(--accent); margin: 2px 0 0; }
+  dialog#modal .choice b { display: block; font: 600 13.5px/1.4 var(--sans); }
+  dialog#modal .choice small { color: var(--ink-2); font-size: 12.5px; line-height: 1.5; }
+  dialog#modal .modal-actions {
+    display: flex; justify-content: flex-end; gap: 9px; margin-top: 18px;
+  }
+  dialog#modal .modal-actions .cta { margin-left: 0; }
+
   /* Reachable by a screen reader, invisible on screen. `display: none` would
      hide it from both, which is the opposite of the point. */
   .sr-only {
@@ -612,11 +734,20 @@
   <header>
     <div class="wordmark"><i aria-hidden="true"></i>resume-agent</div>
     <div class="facts" id="facts">loading profile…</div>
+    <!--
+      One switch, off by default, remembered. Simple is the product: everything
+      it hides is machinery for someone who already knows how this works, and a
+      first-time user should not have to read `shrink_budget` to paste a job ad.
+    -->
+    <label class="advanced-switch" for="advanced">
+      <input type="checkbox" id="advanced">
+      <span>Advanced</span>
+    </label>
     <div class="ready" id="ready"><span class="dot"></span><span id="ready-text">checking…</span></div>
 
     <nav class="tabs" role="tablist" aria-label="Sections">
-      <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Tailor</button>
-      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">Profile</button>
+      <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Create Resume</button>
+      <button role="tab" id="tab-profile" aria-controls="panel-profile" aria-selected="false" data-tab="profile" tabindex="-1">My information</button>
       <button role="tab" id="tab-chat"    aria-controls="panel-chat"    aria-selected="false" data-tab="chat"    tabindex="-1">Chat</button>
       <button role="tab" id="tab-guide"   aria-controls="panel-guide"   aria-selected="false" data-tab="guide"   tabindex="-1">Guide</button>
       <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
@@ -634,12 +765,13 @@
     <div class="hero" id="hero">
       <h1>Every line on the page traces back to something you actually did.</h1>
       <p class="lede">
-        Paste a posting. The agent retrieves from your career knowledge base, rewrites only what it
-        can ground, typesets one page with LaTeX — and drops anything it cannot verify, loudly.
+        Write down what you have done, once. Then paste any job ad and get a resume built only from
+        that — reworded to fit the job, never invented. Anything it cannot check against something
+        you wrote is left out rather than guessed at.
       </p>
     </div>
     <p class="hero-compact hidden" id="hero-compact">
-      Paste a posting. Nothing reaches the page that is not traceable to a bullet you wrote.
+      Paste a job ad. Nothing reaches the page that you did not write down yourself.
     </p>
 
     <main>
@@ -647,30 +779,71 @@
         <h2><label for="jd">The posting</label></h2>
         <textarea id="jd" placeholder="Paste the full job description here — title, responsibilities, requirements. The more of it the parser gets, the better the must-haves come out."></textarea>
         <div class="controls">
+          <!--
+            Three controls, not six. Each names something you would actually
+            decide about a resume; the other three were names for parts of the
+            machine, and they moved behind the Advanced switch.
+          -->
           <div class="opts">
-            <label class="check"><input type="checkbox" id="judge" checked> grounding judge</label>
-            <label class="check"><input type="checkbox" id="letter" checked> cover letter</label>
-            <label class="check"><input type="checkbox" id="strict"> strict</label>
+            <label class="check"><input type="checkbox" id="letter" checked> Write a cover letter</label>
+            <label class="check"><input type="checkbox" id="summary"> Summary at the top</label>
+            <label class="check" for="max-pages">Page limit
+              <select id="max-pages">
+                <option value="1">1 page</option>
+                <option value="2">2 pages</option>
+              </select>
+            </label>
+
+            <label class="check adv-only"><input type="checkbox" id="judge" checked> grounding judge</label>
+            <label class="check adv-only"><input type="checkbox" id="strict"> strict</label>
+            <!--
+              Layout is "auto" for almost everyone: the profile already says
+              whether there is a work history to lead with. The override is for
+              the minority where counting months gives the wrong answer, which
+              is exactly the audience that turns Advanced on.
+            -->
+            <label class="check adv-only" for="layout">layout
+              <select id="layout">
+                <option value="auto">auto</option>
+                <option value="student">student</option>
+                <option value="experienced">experienced</option>
+              </select>
+            </label>
           </div>
-          <button class="cta" id="run">Tailor my resume</button>
+          <button class="cta" id="run">Make my resume</button>
         </div>
         <p class="note" id="note">
-          Running against <b id="note-profile">profile.example</b> — change it on the Profile tab.
+          Running against <b id="note-profile">profile.example</b> — change it on the My information tab.
           A run costs roughly $0.50–1.00 the first time for a given posting on Claude, far less on
           DeepSeek, and nothing on a re-run: parses, scores and first-pass rewrites are cached.
         </p>
       </section>
 
-      <section>
+      <!--
+        What a run looks like when you do not care how it works: five steps that
+        light up in order. Driven by exactly the same node events as the rail
+        below -- each node advances the phase it belongs to -- so there is one
+        source of progress, shown at two levels of detail.
+
+        No percentage on purpose. The layout loop can re-run selection two or
+        three times, so the work has no fixed length and a bar would either
+        stall at 80% or run backwards.
+      -->
+      <section id="steps-panel" class="hidden">
+        <h2 class="sr-only">Progress</h2>
+        <ol class="steps" id="steps"></ol>
+      </section>
+
+      <section class="adv-only">
         <h2>Pipeline</h2>
         <div class="rail" id="rail" aria-label="Pipeline stages"></div>
         <p class="rail-note" id="rail-note">
-          The sixteen stages of the graph, in order. They light up as the run reaches them;
+          Every stage of the graph, in order. They light up as the run reaches them;
           the repair stages only run when they are needed.
         </p>
       </section>
 
-      <section class="panel hidden" id="log-panel">
+      <section class="panel hidden adv-only" id="log-panel">
         <h2>Run log</h2>
         <!--
           The live region is this one line, not the log. A run emits about
@@ -698,14 +871,14 @@
   <div role="tabpanel" id="panel-profile" aria-labelledby="tab-profile" tabindex="0" class="hidden">
     <main style="padding-top:26px">
       <section class="panel">
-        <p class="panel-title">Your career knowledge base</p>
+        <p class="panel-title">Your career file</p>
         <p class="panel-lede">
-          This is the only thing the agent is allowed to draw from. Nothing reaches the resume that
-          is not traceable to a bullet below.
+          Everything on a resume comes from here and nowhere else. If it is not written below,
+          it cannot appear on the page.
         </p>
 
         <div class="picker">
-          <label for="profile-select">Knowledge base</label>
+          <label for="profile-select">Career file</label>
           <select id="profile-select"></select>
           <span class="facts" id="profile-meta"></span>
           <!--
@@ -741,7 +914,7 @@
                   load it. Off by default and deliberately unglamorous — nobody
                   should need it.
                 -->
-                <label class="check"><input type="checkbox" id="raw-toggle"> Raw file</label>
+                <label class="check adv-only"><input type="checkbox" id="raw-toggle"> Raw file</label>
                 <!--
                   Hidden unless the open file is one that can actually go: a job,
                   a project or a narrative. identity.yaml and skills.yaml are
@@ -773,7 +946,7 @@
   <div role="tabpanel" id="panel-chat" aria-labelledby="tab-chat" tabindex="0" class="hidden">
     <main style="padding-top:26px">
       <section class="panel">
-        <p class="panel-title">Talk about your knowledge base</p>
+        <p class="panel-title">Talk about your career file</p>
         <p class="panel-lede">
           Ask what is weak about it, or just describe what you have been doing and let it
           file the details for you. Anything it extracts is shown here first — nothing is
@@ -801,26 +974,24 @@
   <div role="tabpanel" id="panel-guide" aria-labelledby="tab-guide" tabindex="0" class="hidden">
     <main style="padding-top:26px">
       <section class="panel guide">
-        <p class="panel-title">Writing your knowledge base</p>
+        <p class="panel-title">Writing your career file</p>
         <p class="panel-lede">
-          The agent never invents. It retrieves, selects and rephrases what you write here, so the
-          quality of the resume is capped by the quality of what is in this tab's forms.
-          None of what follows is about file formats — the app handles those.
+          The app never makes anything up. It picks from what you write here and rewords it to
+          suit the job, so how good a resume can be is set by how good this is. Nothing below is
+          about file formats — you fill in forms and the app handles the rest.
         </p>
 
-        <h3>Where it lives</h3>
+        <h3>Getting started</h3>
         <p>
-          In a folder called <code>profile/</code> beside the project. You do not have to create it
-          by hand: the <strong>Profile</strong> tab has a <strong>New profile</strong> button. It
-          asks for your name and gives you an empty knowledge base to fill in. Leave the name
-          blank and it copies the worked example instead, which is useful for seeing what a
-          finished profile looks like &mdash; but everything in it belongs to a fictional person,
-          so it is a demo to read rather than a draft to edit.
+          The <strong>My information</strong> tab has a <strong>New</strong> button. It asks for
+          your name and gives you empty forms to fill in. You can also start from the worked
+          example, which is useful for seeing what a finished one looks like &mdash; but everything
+          in it belongs to a made-up person, so read it rather than edit it.
         </p>
         <p>
-          It is gitignored, so your real career data is never committed. Every save keeps a
-          timestamped backup, and a save that would break the profile is refused before anything
-          is written.
+          What you write stays on this computer and is never uploaded anywhere except when you
+          ask for a resume. Every save keeps a dated backup, and a save that would break something
+          is refused before anything is written, so you cannot lose work by mistyping.
         </p>
 
         <h3>What you are filling in</h3>
@@ -830,6 +1001,9 @@
             <tr><td>Profile</td><td>Your name and contact details, the schools, the certificates. This is what prints at the top of the page.</td></tr>
             <tr><td>Skills</td><td>Every technology you are allowed to be described as knowing. See below — this one does more work than it looks.</td></tr>
             <tr><td>Jobs &amp; Projects</td><td>One entry per role or project, each holding its achievements.</td></tr>
+            <tr><td>Leadership</td><td>Society roles, committees, volunteer posts. Same shape as a job, and its achievements compete for the page on the same terms.</td></tr>
+            <tr><td>Publications</td><td>Papers, articles and talks, with achievements underneath them like any other entry.</td></tr>
+            <tr><td>Awards</td><td>Placings, scholarships and honours. One line each, printed under Education.</td></tr>
             <tr><td>Narratives</td><td>Plain prose about how you work. Raw material for the cover letter.</td></tr>
           </tbody>
         </table>
@@ -858,16 +1032,16 @@
             yourself for the interview.</li>
         </ul>
 
-        <h3>Skills is an allow-list, not a list</h3>
+        <h3>It can only name skills you have listed</h3>
         <p>
-          If a generated line names a technology that is not in your Skills, it is treated as a
-          fabrication and thrown away. That is what stops a model quietly upgrading
-          &ldquo;a queue&rdquo; into &ldquo;Kafka&rdquo;.
+          If a generated line names a tool that is not in your Skills, the app treats it as made
+          up and throws the line away. That is what stops it quietly turning
+          &ldquo;a queue&rdquo; into &ldquo;Kafka&rdquo; because the job ad mentioned Kafka.
         </p>
         <p>
-          Give each skill the spellings a posting might use — <code>k8s</code> for Kubernetes,
-          <code>postgres</code> for PostgreSQL. Those aliases are how a job description gets matched
-          to your experience, so a missing one costs you a match you had earned. Removing a skill
+          Give each skill the other spellings a job ad might use — <code>k8s</code> for Kubernetes,
+          <code>postgres</code> for PostgreSQL. That is how an ad gets matched to your experience,
+          so a missing spelling costs you a match you had actually earned. Removing a skill
           that achievements already name will be refused; the form warns you first, with a count.
         </p>
 
@@ -879,7 +1053,7 @@
         </p>
         <p>
           One rule: <strong>do not introduce numbers or technologies that appear nowhere else in
-          your knowledge base.</strong> The letter is checked by the same gate as the resume, so a
+          your career file.</strong> The letter is checked the same way the resume is, so a
           narrative mentioning a framework you never recorded produces letters that fail
           verification until the agent gives up and writes none at all. Keep them qualitative —
           the facts live in the achievements.
@@ -908,9 +1082,54 @@
             to make more fit.</li>
         </ul>
 
+        <h3>Where your education goes, and why it moves</h3>
+        <p>
+          A resume for someone still studying leads with <strong>Education</strong>, carries the
+          GPA, the honours and the awards, and gives room to leadership and publications — because
+          that is the strongest evidence there is. A resume for someone with a few years of work
+          leads with <strong>Experience</strong>, and education shrinks to one line at the bottom.
+        </p>
+        <p>
+          You do not choose between those. The app counts: <strong>months of non-internship
+          work</strong>, and whether your studies have finished. Under two years, or still
+          studying, and you get the first layout; past that, the second. An internship is
+          experience and prints as experience — it just does not, on its own, move education off
+          the top.
+        </p>
+        <p>
+          The <strong>layout</strong> control on the Create Resume tab overrides it (turn on
+          <strong>Advanced</strong> to see it). Worth using if you
+          are changing career, or coming back from a research degree — cases where the months are
+          real but in another field, and counting gives a confidently wrong answer.
+        </p>
+        <p>
+          What the layout never decides is what <em>appears</em>. A section shows up when its
+          achievements win space against everything else competing for the page; if none of them
+          do, the section is simply not there. That is why an experienced profile's leadership
+          section quietly disappears rather than being switched off.
+        </p>
+
+        <h3>Two pages, and the summary</h3>
+        <p>
+          <strong>Pages</strong> defaults to one, which is what most readers expect and what the
+          selection is tuned for. Two is there for the profiles that genuinely need it — an
+          academic record, or a new graduate whose coursework and leadership are the evidence. The
+          capacity of each is measured by compiling, not estimated, so a two-page run really does
+          get to use the second page rather than spilling onto it.
+        </p>
+        <p>
+          <strong>Summary</strong> writes the opening paragraph, and it is off by default: it costs
+          about four lines of a roughly thirty-line page, and those lines are only worth spending
+          when it says something the achievements underneath do not. It is written from the
+          achievements that were <em>selected for that resume</em> and checked against them — a
+          number or a technology that none of them supports gets the summary rewritten, and if that
+          fails twice the resume ships without one.
+        </p>
+
         <h3>Removing things</h3>
         <p>
-          Open a job, project or narrative and use <strong>Remove</strong> in the editor bar. It
+          Open a job, project, leadership role, publication or narrative and use
+          <strong>Remove</strong> in the editor bar. It
           says how many achievements go with the file before it does anything, and keeps a
           timestamped copy in the backups folder either way.
         </p>
@@ -941,8 +1160,8 @@
           something without showing you a card to confirm, nothing happened.
         </p>
 
-        <h3>If you would rather edit the files</h3>
-        <p>
+        <h3 class="adv-only">If you would rather edit the files</h3>
+        <p class="adv-only">
           Everything above is stored as YAML and Markdown in <code>profile/</code>, and the
           <strong>Raw file</strong> switch in the editor shows the file behind the form. You never
           need it — but a file edited by hand keeps its comments and formatting, and the forms
@@ -958,8 +1177,8 @@
       <section class="panel">
         <p class="panel-title">Applications sent</p>
         <p class="panel-lede">
-          Written by the last node of every completed run. This is the one database in the project
-          that is not derived and cannot be regenerated.
+          Written automatically whenever a run finishes. This is the only thing here that cannot be
+          rebuilt from your career file, so it is worth keeping.
         </p>
         <div id="apps-body"></div>
       </section>
@@ -967,9 +1186,30 @@
   </div>
 
   <footer>
-    <span>Local only · nothing leaves this machine except the job description and your knowledge base, which go to the model provider.</span>
-    <span>Jake's Resume template · compiled with tectonic</span>
+    <span>Everything stays on this computer, except the job ad and your career file, which are sent to the AI provider.</span>
+    <span>Jake's Resume template<span class="adv-only"> · compiled with tectonic</span></span>
   </footer>
+
+  <!--
+    One dialog, filled per use. Native <dialog> rather than a hand-rolled
+    overlay: focus trapping, Escape, the backdrop and returning focus to the
+    element that opened it are all free and all things a div gets wrong.
+
+    It replaces four prompt()/confirm() calls. The worst of them asked for your
+    name in a single text box where *leaving it blank* silently meant "copy the
+    fictional example instead" -- two unrelated decisions in one field, on the
+    first screen a new person sees.
+  -->
+  <dialog id="modal">
+    <form method="dialog">
+      <h2 id="modal-title"></h2>
+      <div id="modal-body"></div>
+      <div class="modal-actions">
+        <button type="submit" value="cancel" class="row-add">Cancel</button>
+        <button type="submit" value="ok" class="cta" id="modal-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
 
 </div>
 
@@ -978,16 +1218,24 @@ const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g,
   (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-/* The graph's sixteen nodes, grouped by the phase they belong to. This list
+/* The graph's nodes, grouped by the phase they belong to. This list
    mirrors GRAPH_NODES in api/app.py; a renamed node would show up here as a
    tick that never lights, so `test_the_rail_matches_the_real_graph` checks the
    two against each other. */
+/* `name` labels the rail's compact column heading; `label` is the sentence the
+   five-step strip shows. Two audiences, one table -- so a node can never be in
+   the detailed view and missing from the simple one. */
 const PHASES = [
-  { name: "Read",    nodes: ["parse_jd", "retrieve", "score", "select"] },
-  { name: "Write",   nodes: ["tailor", "verify"] },
-  { name: "Typeset", nodes: ["render", "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull"] },
-  { name: "Letter",  nodes: ["cover_letter"] },
-  { name: "Close",   nodes: ["human_review", "revision_cap", "finalize"] },
+  { name: "Read",    label: "Reading the posting",
+    nodes: ["parse_jd", "retrieve", "score", "select"] },
+  { name: "Write",   label: "Writing your lines",
+    nodes: ["tailor", "verify", "summary"] },
+  { name: "Typeset", label: "Typesetting the page",
+    nodes: ["render", "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull"] },
+  { name: "Letter",  label: "Cover letter",
+    nodes: ["cover_letter"] },
+  { name: "Close",   label: "Finishing",
+    nodes: ["human_review", "revision_cap", "finalize"] },
 ];
 
 const TABS = ["tailor", "profile", "chat", "guide", "history"];
@@ -998,12 +1246,16 @@ let profileOptions = [];
 
 /* --------------------------------------------------------------- tabs */
 
-function selectTab(name) {
+async function selectTab(name) {
   if (!TABS.includes(name)) name = "tailor";
   // Leaving the Profile tab with unsaved text would lose it silently, and the
   // text is career data the user just typed.
-  if (name !== "profile" && isDirty() &&
-      !confirm(`Discard unsaved changes to ${editor.path}?`)) {
+  if (name !== "profile" && isDirty() && !(await askConfirm({
+    title: "Discard your changes?",
+    body: `You have edits to ${editor.path} that have not been saved.`,
+    ok: "Discard",
+    danger: true,
+  }))) {
     return;
   }
   for (const tab of TABS) {
@@ -1055,10 +1307,47 @@ function buildRail() {
 
 function resetRail() {
   $("rail").querySelectorAll("li").forEach((li) => { li.dataset.state = "idle"; });
-  $("rail-note").textContent = "Sixteen stages. The repair stages only run if they are needed.";
+  const total = $("rail").querySelectorAll("li").length;
+  $("rail-note").textContent =
+    `${total} stages. The repair stages only run if they are needed.`;
+  buildSteps();
+}
+
+/* ------------------------------------------------------- the five steps */
+
+function buildSteps() {
+  $("steps").innerHTML = PHASES.map((phase) =>
+    `<li data-phase="${esc(phase.name)}" data-state="idle">` +
+    `<span class="tick"></span>${esc(phase.label)}</li>`).join("");
+}
+
+function phaseOf(node) {
+  return PHASES.find((phase) => phase.nodes.includes(node));
+}
+
+/* A phase is "done" once a later one starts, not when its own last node ends:
+   the repair stages inside Typeset are skipped on a clean run, so waiting for
+   the last node of a phase would leave it stuck at active forever. */
+function markPhase(node) {
+  const phase = phaseOf(node);
+  if (!phase) return;
+  const reached = PHASES.indexOf(phase);
+  $("steps").querySelectorAll("li").forEach((li, index) => {
+    li.dataset.state = index < reached ? "done" : index === reached ? "active" : "idle";
+    if (index === reached) li.setAttribute("aria-current", "step");
+    else li.removeAttribute("aria-current");
+  });
+}
+
+function finishSteps() {
+  $("steps").querySelectorAll("li").forEach((li) => {
+    if (li.dataset.state !== "idle") li.dataset.state = "done";
+    li.removeAttribute("aria-current");
+  });
 }
 
 function markNode(node, state) {
+  if (state === "active") markPhase(node);
   const li = $("rail").querySelector(`li[data-node="${CSS.escape(node)}"]`);
   if (!li) return;
   li.dataset.state = state;
@@ -1086,7 +1375,7 @@ async function loadProfiles() {
   const select = $("profile-select");
   select.innerHTML = profileOptions.map((o) =>
     `<option value="${esc(o.name)}"${o.loads ? "" : " disabled"}>` +
-    `${esc(o.name)}${o.loads ? ` — ${o.bullets} bullets` : " — does not load"}</option>`).join("");
+    `${esc(o.name)}${o.loads ? ` — ${o.bullets} achievements` : " — does not load"}</option>`).join("");
 
   // Prefer a real profile over the shipped fixture. Someone who has written
   // one should not have to pick it every time they open the page.
@@ -1129,6 +1418,68 @@ function safeSet(key, value) {
   try { localStorage.setItem(key, value); } catch { /* private window; not important */ }
 }
 
+/* -------------------------------------------------------------- dialogs */
+
+/* Resolves true for OK, false for Cancel or Escape. The caller reads whatever
+   it put in the body afterwards -- the dialog stays in the DOM, so its fields
+   are still there when the promise settles. */
+function openModal({ title, body, ok = "OK", danger = false }) {
+  const dialog = $("modal");
+  $("modal-title").textContent = title;
+  $("modal-body").innerHTML = body;
+
+  const confirm = $("modal-ok");
+  confirm.textContent = ok;
+  confirm.className = danger ? "btn-danger" : "cta";
+
+  return new Promise((resolve) => {
+    dialog.returnValue = "cancel";
+    dialog.addEventListener(
+      "close", () => resolve(dialog.returnValue === "ok"), { once: true }
+    );
+    dialog.showModal();
+    // Put the caret where the work is; otherwise focus lands on Cancel.
+    const first = $("modal-body").querySelector("input, select, textarea");
+    (first || confirm).focus();
+    if (first && first.select) first.select();
+  });
+}
+
+async function askText({ title, label, help = "", value = "", ok = "OK" }) {
+  const accepted = await openModal({
+    title,
+    ok,
+    body: `${help ? `<p>${esc(help)}</p>` : ""}
+      <label class="field"><span>${esc(label)}</span>
+        <input type="text" id="modal-text" value="${esc(value)}" autocomplete="off">
+      </label>`,
+  });
+  if (!accepted) return null;
+  const typed = $("modal-text").value.trim();
+  return typed || null;
+}
+
+function askConfirm({ title, body, ok = "OK", danger = false }) {
+  return openModal({ title, ok, danger, body: `<p>${esc(body)}</p>` });
+}
+
+/* ------------------------------------------------------------- advanced */
+
+const ADVANCED_KEY = "resume-agent.advanced";
+
+/* One attribute; the rest is the `.adv-only` rule in the stylesheet. Nothing is
+   refetched or re-rendered, so the switch is instant and cannot get the page
+   into a half-updated state. */
+function applyAdvanced(on) {
+  if (on) document.body.dataset.advanced = "1";
+  else delete document.body.dataset.advanced;
+  $("advanced").checked = on;
+  safeSet(ADVANCED_KEY, on ? "1" : "0");
+}
+
+applyAdvanced(safeGet(ADVANCED_KEY) === "1");
+$("advanced").addEventListener("change", (e) => applyAdvanced(e.target.checked));
+
 async function renderProfileBody() {
   if (!profileOptions.length) {
     $("profile-body").innerHTML = setupHtml();
@@ -1136,6 +1487,11 @@ async function renderProfileBody() {
     $("create-profile")?.addEventListener("click", createProfile);
     return;
   }
+
+  // Shown above the profile rather than instead of it: someone with only the
+  // shipped example still wants to look at it -- that is what it is for -- but
+  // they also need to be told, once and plainly, that it is not theirs.
+  const setup = profileOptions.some((o) => o.loads && !o.is_example) ? "" : setupHtml();
 
   // A directory that looks like a profile but fails to load is reported above
   // the good one rather than hidden. A validation error is the likeliest thing
@@ -1165,7 +1521,7 @@ async function renderProfileBody() {
         <span class="name">${esc(entry.heading)}</span>
         <span class="kind">${esc(entry.kind)}</span>
       </div>
-      <div class="entry-sub">${esc(entry.subheading)} · <span style="color:var(--ink-4)">${esc(entry.id)}</span></div>
+      <div class="entry-sub">${esc(entry.subheading)}<span class="adv-only"> · <span class="ident">${esc(entry.id)}</span></span></div>
       ${entry.tech.length ? `<div class="chips">${entry.tech.map((t) => `<span class="chip">${esc(t)}</span>`).join("")}</div>` : ""}
       ${entry.bullets.map(bulletHtml).join("")}
     </div>`).join("");
@@ -1176,20 +1532,22 @@ async function renderProfileBody() {
       <div class="chips">${names.map((n) => `<span class="chip">${esc(n)}</span>`).join("")}</div>
     </div>`).join("");
 
-  $("profile-body").innerHTML = broken +
+  $("profile-body").innerHTML = broken + setup +
     `<div class="stats">
-       <div class="stat"><div class="k">entries</div><div class="v">${detail.entries.length}</div></div>
-       <div class="stat"><div class="k">bullets</div><div class="v">${bulletCount}</div></div>
+       <div class="stat"><div class="k">jobs &amp; projects</div><div class="v">${detail.entries.length}</div></div>
+       <div class="stat"><div class="k">achievements</div><div class="v">${bulletCount}</div></div>
        <div class="stat"><div class="k">skills</div><div class="v">${Object.values(detail.skills_by_category).flat().length}</div></div>
-       <div class="stat"><div class="k">narratives</div><div class="v">${detail.narratives.length}</div></div>
+       <div class="stat"><div class="k">about you</div><div class="v">${detail.narratives.length}</div></div>
      </div>
      <div class="block"><h3>Experience and projects</h3>${entries}</div>
-     <div class="block"><h3>Skills — the allow-list</h3>${skills}</div>
-     <div class="block"><h3>Narratives</h3>
+     <div class="block"><h3>Skills</h3>${skills}</div>
+     <div class="block"><h3>About how you work</h3>
        ${detail.narratives.length
-         ? `<div class="chips">${detail.narratives.map((n) => `<span class="chip">${esc(n)}.md</span>`).join("")}</div>`
-         : `<p class="empty">No narratives. The cover letter will still be written, but with less of your voice in it — see the Guide.</p>`}
+         ? `<div class="chips">${detail.narratives.map((n) => `<span class="chip">${esc(n)}</span>`).join("")}</div>`
+         : `<p class="empty">Nothing written yet. Cover letters still get written, just with less of your own voice in them — the Guide explains what to put here.</p>`}
      </div>`;
+
+  $("create-profile")?.addEventListener("click", createProfile);
 }
 
 function bulletHtml(bullet) {
@@ -1197,8 +1555,9 @@ function bulletHtml(bullet) {
     .map(([k, v]) => `<span class="chip metric">${esc(k)} = ${esc(v)}</span>`).join("");
   return `
     <div class="bullet${bullet.confidence === "claim" ? " claim" : ""}">
-      <div class="bid">${esc(bullet.id)}${bullet.confidence !== "verified"
-        ? ` · <span class="flag">${esc(bullet.confidence)}</span>` : ""}</div>
+      <div class="bid"><span class="adv-only"><span class="ident">${esc(bullet.id)}</span>${
+        bullet.confidence !== "verified" ? " · " : ""}</span>${bullet.confidence !== "verified"
+        ? `<span class="flag">${esc(bullet.confidence)}</span>` : ""}</div>
       <div class="text">${esc(bullet.canonical)}</div>
       ${metrics || bullet.skills.length || bullet.themes.length ? `<div class="chips">
         ${metrics}
@@ -1208,21 +1567,29 @@ function bulletHtml(bullet) {
     </div>`;
 }
 
+/* The first thing a new person sees.
+
+   It used to open with `cp -r profile.example profile` and name three YAML
+   files, which was written before the button below existed -- so step one was a
+   shell command for a tool whose whole point is that you never touch the file
+   format. It was also unreachable: the check was "no profiles at all", and the
+   shipped example is always there. */
 function setupHtml() {
   return `
     <div class="setup">
-      <p><strong>No knowledge base found.</strong> The agent has nothing to draw from yet. Three steps:</p>
+      <p><strong>Let's start with your details.</strong> The app builds every resume out of
+        what you write here, so this is the one thing to do first.</p>
       <ol>
-        <li><strong>Copy the example.</strong> It is a complete, valid profile you can edit in place.
-          <pre><code>cp -r profile.example profile</code></pre></li>
-        <li><strong>Make every file about you.</strong> Start with <code>identity.yaml</code> and one
-          job in <code>experience/</code>. The Guide tab explains each field and what makes a bullet
-          usable.</li>
-        <li><strong>Reload this page.</strong> Your profile appears here with everything that loaded.
-          If a file has a mistake it is listed with the error rather than silently skipped.</li>
+        <li><strong>Make your file.</strong> It asks for your name, then gives you empty
+          forms — no file formats to learn.</li>
+        <li><strong>Add one job and one thing you did in it.</strong> That is enough to
+          produce a resume; you can keep adding afterwards.</li>
+        <li><strong>Paste a job ad on the Create Resume tab.</strong> It picks what fits and
+          typesets a page.</li>
       </ol>
-      <p><code>profile/</code> is gitignored — your real career data is never committed.</p>
-      <button class="cta" id="create-profile" style="margin-left:0">Create my profile</button>
+      <p>Your details stay on this computer. Nothing is uploaded except when you ask for a
+        resume, and then only to the AI provider.</p>
+      <button class="cta" id="create-profile" style="margin-left:0">Create my file</button>
     </div>`;
 }
 
@@ -1232,7 +1599,7 @@ async function loadProfileSummary() {
   try {
     const p = await (await fetch(`/api/profile?profile=${encodeURIComponent(activeProfile)}`)).json();
     $("facts").innerHTML =
-      `${esc(p.name)} · <b>${p.bullets}</b> bullets · <b>${p.experience}</b> roles · ` +
+      `${esc(p.name)} · <b>${p.bullets}</b> achievements · <b>${p.experience}</b> jobs · ` +
       `<b>${p.projects}</b> projects`;
 
     // The variable to set depends on the configured provider, so the page asks
@@ -1285,8 +1652,8 @@ async function loadApplications() {
   if (!rows.length) {
     $("apps-body").innerHTML =
       `<p class="empty">Nothing sent yet. A row is written here automatically when a run finishes,
-       recording the posting, the fit, and which bullets went out — so that later you can ask which
-       bullets appear in the applications that got callbacks.</p>`;
+       recording the job, how well you matched it, and which achievements went out — so later you
+       can ask which ones appear in the applications that got callbacks.</p>`;
     return;
   }
 
@@ -1342,7 +1709,7 @@ function renderResult(r) {
       stat("pages", r.page_count ?? "—") +
       stat("line budget", r.line_budget ?? "—", "lines") +
       stat("layout tries", r.layout_attempts) +
-      stat("bullets", r.bullets?.length ?? 0) +
+      stat("achievements", r.bullets?.length ?? 0) +
     `</div>`;
 
   // Gaps and dropped bullets come before the good news. What is missing is the
@@ -1351,10 +1718,10 @@ function renderResult(r) {
   if (r.must_have_gaps?.length) {
     html += `<div class="block"><h3 class="alarm">Must-haves not covered</h3>` +
             `<ul class="list alarm">${r.must_have_gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul>` +
-            `<p class="note">A gap is sometimes a bullet you have not written yet rather than a job you cannot do — check the Profile tab.</p></div>`;
+            `<p class="note">A gap is sometimes something you have done but not written down yet, rather than a job you cannot do — check My information.</p></div>`;
   }
   if (r.dropped_bullets?.length) {
-    html += `<div class="block"><h3 class="alarm">Dropped for failing grounding</h3>` +
+    html += `<div class="block"><h3 class="alarm">Left out — could not be checked against what you wrote</h3>` +
             `<ul class="list alarm">${r.dropped_bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul></div>`;
   }
   if (r.bullets?.length) {
@@ -1391,6 +1758,7 @@ async function start() {
   $("run").textContent = "Running…";
   $("log").innerHTML = "";
   $("log-panel").classList.remove("hidden");
+  $("steps-panel").classList.remove("hidden");
   $("result").classList.add("hidden");
   $("letterbox").classList.add("hidden");
   resetRail();
@@ -1406,6 +1774,9 @@ async function start() {
       use_judge: $("judge").checked,
       write_cover_letter: $("letter").checked,
       strict: $("strict").checked,
+      layout: $("layout").value,
+      max_pages: Number($("max-pages").value),
+      summary: $("summary").checked,
     }),
   });
   if (!res.ok) { log("error", "could not start", await res.text()); finish(); return; }
@@ -1435,16 +1806,22 @@ async function start() {
 }
 
 function finish() {
+  finishSteps();
   $("run").disabled = false;
-  $("run").textContent = "Tailor my resume";
+  $("run").textContent = "Make my resume";
 }
 
 function announce(node) {
   // One sentence, rewritten as the stage changes. This is the only live region
   // on the page: announcing all ~35 log lines would be unusable.
-  const done = $("rail").querySelectorAll('li[data-state="done"]').length;
-  const total = $("rail").querySelectorAll("li").length;
-  $("run-status").textContent = `${node} — stage ${done + 1} of ${total}`;
+  //
+  // Phrased as the phase, not the node, because that is what the screen shows
+  // and a screen-reader user should hear the same thing a sighted one reads.
+  const phase = phaseOf(node);
+  if (!phase) return;
+  const step = PHASES.indexOf(phase) + 1;
+  $("run-status").textContent =
+    `${phase.label} — step ${step} of ${PHASES.length}`;
 }
 
 /* -------------------------------------------------------------- editor */
@@ -1502,14 +1879,15 @@ async function loadFileList() {
 
   // Grouped by directory in load order, matching how the profile is assembled
   // rather than one flat alphabetical list.
-  const groups = { "": [], experience: [], projects: [], narratives: [] };
+  const groups = { "": [], experience: [], projects: [], leadership: [], publications: [], narratives: [] };
   for (const file of editor.files) {
     const slash = file.indexOf("/");
     const dir = slash === -1 ? "" : file.slice(0, slash);
     (groups[dir] ??= []).push(file);
   }
 
-  const label = { "": "Profile", experience: "Jobs", projects: "Projects", narratives: "Narratives" };
+  const label = { "": "Profile", experience: "Jobs", projects: "Projects",
+                  leadership: "Leadership", publications: "Publications", narratives: "Narratives" };
   $("file-list").innerHTML = Object.entries(groups)
     .filter(([, files]) => files.length)
     .map(([dir, files]) =>
@@ -1520,7 +1898,9 @@ async function loadFileList() {
     .join("") +
     `<div class="group">Add</div>
      <button type="button" class="add-entry" data-role="experience">+ Job</button>
-     <button type="button" class="add-entry" data-role="project">+ Project</button>`;
+     <button type="button" class="add-entry" data-role="project">+ Project</button>
+     <button type="button" class="add-entry" data-role="leadership">+ Leadership</button>
+     <button type="button" class="add-entry" data-role="publication">+ Publication</button>`;
 
   $("file-list").querySelectorAll("button[data-file]").forEach((button) => {
     button.addEventListener("click", () => openFile(button.dataset.file));
@@ -1536,7 +1916,12 @@ function prettyName(path) {
 }
 
 async function openFile(path) {
-  if (isDirty() && !confirm(`Discard unsaved changes to ${editor.path}?`)) return;
+  if (isDirty() && !(await askConfirm({
+    title: "Discard your changes?",
+    body: `You have edits to ${editor.path} that have not been saved.`,
+    ok: "Discard",
+    danger: true,
+  }))) return;
 
   setEditorMessage("");
   try {
@@ -1769,7 +2154,7 @@ function nextBulletId(entryId, existing) {
   return `${entryId}.b${n}`;
 }
 
-function removeRow(path, index) {
+async function removeRow(path, index) {
   const f = specAt(path);
   const [node, key] = at(path);
   const row = (node[key] || [])[index];
@@ -1779,10 +2164,12 @@ function removeRow(path, index) {
   // be refused anyway, but that costs them the edit, so warn while it is cheap.
   const uses = f.key === "canonical" ? (editor.doc.skill_usage?.[name] ?? 0) : 0;
   const warning = uses
-    ? `${name} is named by ${uses} bullet${uses > 1 ? "s" : ""} elsewhere. ` +
-      `Removing it will make those files invalid. Remove anyway?`
-    : `Remove ${name}?`;
-  if (!confirm(warning)) return;
+    ? `${name} is used by ${uses} achievement${uses > 1 ? "s" : ""} elsewhere. ` +
+      `Removing it would make those invalid.`
+    : "This removes it from the form. Nothing is written until you save.";
+  if (!(await askConfirm({
+    title: `Remove ${name}?`, body: warning, ok: "Remove", danger: true,
+  }))) return;
 
   node[key] = node[key].filter((_, i) => i !== index);
   renderForm();
@@ -1860,7 +2247,7 @@ async function saveFile() {
    clearer way to say that. */
 function isRemovable(path) {
   if (!path || isReadOnly()) return false;
-  if (/^(experience|projects)\/[^/]+\.yaml$/.test(path)) return true;
+  if (/^(experience|projects|leadership|publications)\/[^/]+\.yaml$/.test(path)) return true;
   return /^narratives\/[^/]+\.md$/.test(path) && !/^narratives\/readme\.md$/i.test(path);
 }
 
@@ -1877,7 +2264,12 @@ async function deleteFile() {
   const goes = bullets
     ? ` and its ${bullets} achievement${bullets === 1 ? "" : "s"}`
     : "";
-  if (!confirm(`Remove ${editor.path}${goes}?\n\nA copy is kept in the backups folder.`)) return;
+  if (!(await askConfirm({
+    title: `Remove ${editor.path}?`,
+    body: `This deletes it${goes}. A dated copy is kept in the backups folder.`,
+    ok: "Remove",
+    danger: true,
+  }))) return;
 
   $("delete-file").disabled = true;
   setEditorMessage("");
@@ -1908,8 +2300,15 @@ async function deleteFile() {
 }
 
 async function addEntry(role) {
-  const name = prompt(role === "experience" ? "Employer name?" : "Project name?");
-  if (!name || !name.trim()) return;
+  const asked = {
+    experience: { title: "Add a job", label: "Employer" },
+    project: { title: "Add a project", label: "Project name" },
+    leadership: { title: "Add a leadership role", label: "Organisation" },
+    publication: { title: "Add a publication", label: "Title" },
+  }[role] || { title: "Add an entry", label: "Name" };
+
+  const name = await askText({ ...asked, ok: "Add" });
+  if (!name) return;
   try {
     const response = await fetch("/api/profile/entry", {
       method: "POST",
@@ -1952,7 +2351,7 @@ function setProfileMode(mode) {
     $("profile-editor").innerHTML =
       `<div class="setup">
          <p><strong>${esc(activeProfile)} is the worked example, and it is read-only.</strong>
-            It is what the test suite loads, and unlike your own knowledge base it is
+            It is what the test suite loads, and unlike your own career file it is
             committed to git — so anything you typed here would be published.</p>
          <p>Make your own from it. It will be gitignored, and it starts as a complete
             copy you can edit into yourself.</p>
@@ -1973,16 +2372,38 @@ async function createProfile() {
   let name = "profile";
   for (let n = 2; taken.has(name); n += 1) name = `profile${n}`;
 
-  // Asked once, here, because it is the decision that is expensive to reverse:
-  // a copy of the example has to be emptied file by file before the profile
-  // describes you, and that is exactly the chore this prompt avoids.
-  const who = prompt(
-    "Your full name, as it should print on the resume.\n\n" +
-    "Leave blank and press OK to start from the worked example instead — " +
-    "a complete fake profile you can edit in place."
-  );
-  if (who === null) return;
-  const mode = who.trim() ? "empty" : "example";
+  // Two decisions, asked as two decisions. This used to be one text box where
+  // leaving it blank silently meant "copy the fictional example instead" --
+  // which nobody would guess, on the first screen a new person sees.
+  const accepted = await openModal({
+    title: "Create your career file",
+    ok: "Create",
+    body: `
+      <label class="field"><span>Your name, as it should print on the resume</span>
+        <input type="text" id="modal-text" autocomplete="name" placeholder="Ada Lovelace">
+      </label>
+      <label class="choice">
+        <input type="radio" name="start" value="empty" checked>
+        <span><b>Start empty</b>
+          <small>Blank forms to fill in with your own jobs and projects.</small></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="start" value="example">
+        <span><b>Start from the worked example</b>
+          <small>A complete file belonging to a made-up person. Good for seeing what a
+            finished one looks like, but you would have to delete all of it.</small></span>
+      </label>`,
+  });
+  if (!accepted) return;
+
+  const who = $("modal-text").value.trim();
+  const mode = $("modal-body").querySelector('input[name="start"]:checked').value;
+  if (mode === "empty" && !who) {
+    $("profile-body").insertAdjacentHTML("afterbegin",
+      `<div class="errors">A name is needed to start an empty file — it prints at the ` +
+      `top of every resume.</div>`);
+    return;
+  }
 
   const button = $("create-from-example") || $("create-profile");
   if (button) { button.disabled = true; button.textContent = "Creating…"; }

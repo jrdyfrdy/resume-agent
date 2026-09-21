@@ -53,7 +53,21 @@ class InspectionReport:
     @property
     def is_clean(self) -> bool:
         """One page, nothing overflowing, nothing broken. Spec 9's deterministic checks."""
-        return self.page_count == 1 and not self.overfull_boxes and self.first_error is None
+        return self.fits(1) and not self.overfull_boxes and self.first_error is None
+
+    def fits(self, max_pages: int) -> bool:
+        """Within the page target.
+
+        `<=`, not `==`: a resume that comes in under its target is finished, not
+        under-filled. The budget already tries to use the space; a run that lands
+        at one page with a two-page allowance has simply found there was not
+        enough evidence worth printing, and padding it would be the wrong fix.
+        """
+        return self.page_count is not None and self.page_count <= max_pages
+
+    def is_clean_within(self, max_pages: int) -> bool:
+        """`is_clean`, against a configurable page target."""
+        return self.fits(max_pages) and not self.overfull_boxes and self.first_error is None
 
 
 def page_count(pdf_path: Path) -> int:

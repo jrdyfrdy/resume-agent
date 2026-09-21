@@ -54,6 +54,8 @@ class ExitCode(IntEnum):
     NO_COMPILER = 3
     NO_CREDENTIALS = 4
     JD_PARSE_FAILED = 5
+    # A flag that could never be right, as opposed to work that failed.
+    USAGE = 6
 
 
 app = typer.Typer(
@@ -393,6 +395,26 @@ def run(
         bool,
         typer.Option("--interactive", help="Pause for review before finalizing (spec 5)."),
     ] = False,
+    max_pages: Annotated[
+        int,
+        typer.Option(
+            "--max-pages",
+            min=1,
+            max=2,
+            help="Page target. One is the default and what most readers expect.",
+        ),
+    ] = 1,
+    layout: Annotated[
+        str,
+        typer.Option(
+            "--layout",
+            help="Section order: auto (from your profile), student, or experienced.",
+        ),
+    ] = "auto",
+    summary: Annotated[
+        bool,
+        typer.Option("--summary", help="Write an opening summary, gated like every other line."),
+    ] = False,
 ) -> None:
     """Run the whole graph: parse, retrieve, score, select, tailor, verify, compile.
 
@@ -411,12 +433,23 @@ def run(
         raise typer.Exit(ExitCode.NO_COMPILER)
 
     raw_jd = jd.read_text(encoding="utf-8")
+    if layout not in ("auto", "student", "experienced"):
+        typer.secho(
+            f"--layout must be auto, student or experienced (got {layout!r})",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
+
     options = RunOptions(
         out_dir=str(out),
         strict=strict,
         use_judge=not no_judge,
         write_cover_letter=not no_cover_letter,
         interactive=interactive,
+        max_pages=max_pages,
+        layout=layout,
+        summary=summary,
     )
 
     # A checkpointer is only needed when the run can pause, but attaching it

@@ -20,11 +20,17 @@ from resume_agent.graph.nodes.score import build_fit_report, score_fit
 from resume_agent.graph.nodes.select import select_content
 from resume_agent.kb.index import ProfileIndex
 from resume_agent.kb.retriever import HybridRetriever
-from resume_agent.latex.context import group_skills_by_category
-from resume_agent.latex.layout import line_budget, skill_row_lines
+from resume_agent.latex.context import credential_rows, group_skills_by_category
+from resume_agent.latex.layout import (
+    SUMMARY_LINES,
+    item_lines,
+    line_budget,
+    skill_row_lines,
+)
 from resume_agent.models.fit import EvidenceMatch, FitReport, SelectionResult
 from resume_agent.models.job import JobSpec
 from resume_agent.models.profile import Profile
+from resume_agent.sections import Stage, career_stage, this_month
 
 
 @dataclass
@@ -37,12 +43,27 @@ class AnalysisResult:
     jd_cache_hit: bool
 
 
-def budget_for_profile(profile: Profile) -> int:
+def budget_for_profile(
+    profile: Profile,
+    *,
+    pages: int = 1,
+    stage: Stage | None = None,
+    today: str | None = None,
+    reserve_summary: bool = False,
+) -> int:
     """The line budget this profile's shape leaves for bullets.
 
     Sections counted are the ones the template will actually emit, so an empty
     projects list does not pay for a Projects heading.
+
+    The student layout costs more furniture than the experienced one -- GPA,
+    honours, coursework and the awards under them are all printed lines -- so
+    the stage is part of the shape, not a presentation detail applied later.
     """
+    today = today or this_month()
+    stage = stage or career_stage(profile, today)
+    compact = stage == "experienced"
+
     skill_rows = group_skills_by_category(profile.skills)
     sections = sum(
         [
@@ -52,12 +73,35 @@ def budget_for_profile(profile: Profile) -> int:
             bool(skill_rows),
         ]
     )
+
+    # Measured from the text that will actually print, for the reason given on
+    # `item_lines`: a two-word honour and a wrapping coursework list are both
+    # one `\resumeItem` and are not the same number of lines.
+    education_extras: list[str] = []
+    credentials: list[str] = []
+    if not compact:
+        for entry in profile.education:
+            if entry.gpa:
+                education_extras.append(f"GPA: {entry.gpa}")
+            education_extras.extend(entry.honors)
+            if entry.coursework:
+                education_extras.append(
+                    "Relevant coursework: " + ", ".join(entry.coursework)
+                )
+        credentials = [row["text"] for row in credential_rows(profile)]
+
     return line_budget(
         experience_entries=len(profile.experience),
         project_entries=len(profile.projects),
         education_entries=len(profile.education),
         skill_lines=skill_row_lines(skill_rows),
         sections=sections,
+        leadership_entries=len(profile.leadership),
+        publication_entries=len(profile.publications),
+        education_extra_lines=item_lines(education_extras),
+        credential_lines=item_lines(credentials),
+        summary_lines=SUMMARY_LINES if reserve_summary else 0,
+        pages=pages,
     )
 
 

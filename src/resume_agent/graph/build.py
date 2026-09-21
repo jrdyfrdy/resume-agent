@@ -48,6 +48,7 @@ from resume_agent.graph.nodes.retrieve import retrieve_evidence
 from resume_agent.graph.nodes.review import human_review, note_revision_cap, route_after_review
 from resume_agent.graph.nodes.score import build_fit_report, score_fit
 from resume_agent.graph.nodes.select import select_content
+from resume_agent.graph.nodes.summary import write_summary
 from resume_agent.graph.nodes.tailor import tailor_bullets
 from resume_agent.graph.nodes.verify import (
     MAX_GROUNDING_ATTEMPTS,
@@ -60,6 +61,7 @@ from resume_agent.kb.loader import load_profile
 from resume_agent.kb.retriever import HybridRetriever
 from resume_agent.latex.inspect import find_overfull_boxes, first_latex_error
 from resume_agent.latex.layout import shrink_budget
+from resume_agent.sections import Stage, career_stage, this_month
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +77,18 @@ MAX_LAYOUT_ATTEMPTS = 3
 
 def _profile(state: AgentState):
     return load_profile(Path(state["profile_path"]))
+
+
+def _stage(state: AgentState) -> Stage:
+    """The section order this run renders with.
+
+    Resolved once here rather than recomputed per node: the budget and the
+    render have to agree about the shape of the page, and a stage derived
+    twice from a "today" that crossed a month boundary mid-run would not.
+    """
+    return career_stage(
+        _profile(state), this_month(), override=state["options"].layout
+    )
 
 
 def node_parse_jd(state: AgentState) -> dict:
@@ -108,7 +122,13 @@ def node_score(state: AgentState, llm: BaseChatModel | None = None) -> dict:
 def node_select(state: AgentState) -> dict:
     """The knapsack. Re-entered by the layout loop with a smaller budget."""
     profile = _profile(state)
-    budget = state.get("line_budget") or budget_for_profile(profile)
+    options = state["options"]
+    budget = state.get("line_budget") or budget_for_profile(
+        profile,
+        pages=options.max_pages,
+        stage=_stage(state),
+        reserve_summary=options.summary,
+    )
 
     result = select_content(
         state["job_spec"],
@@ -220,11 +240,38 @@ def route_after_verify(state: AgentState) -> str:
     return "render"
 
 
+def node_summary(state: AgentState, llm: BaseChatModel | None = None) -> dict:
+    """Write the opening summary, if this run asked for one.
+
+    Placed after verify and before render because it draws on the *tailored*
+    text: the summary should describe the sentences that will actually appear
+    under it, not the canonical ones they were rewritten from.
+    """
+    if not state["options"].summary:
+        return {"summary_text": ""}
+
+    tailored = {t.source_id: t.text for t in state.get("tailored", [])}
+    dropped = set(state.get("dropped_bullets", []))
+    surviving = [bid for bid in state.get("selected", []) if bid not in dropped]
+
+    job = state.get("job_spec")
+    text, complaints = write_summary(
+        _profile(state),
+        getattr(job, "title", "") or "",
+        surviving,
+        tailored,
+        llm=llm,
+    )
+    if text:
+        logger.info("summary: %d chars", len(text))
+    return {"summary_text": text, "errors": complaints if not text else []}
+
+
 def route_after_inspect(state: AgentState) -> str:
     """Layout cycle. Spec 5's routing table, in order of severity.
 
     compile error   -> fix_latex
-    pages > 1       -> shrink the budget, reselect
+    over max_pages  -> shrink the budget, reselect
     overfull hboxes -> re-tailor the offending bullets shorter
     clean           -> forward
     """
@@ -241,7 +288,7 @@ def route_after_inspect(state: AgentState) -> str:
     if state.get("pdf_path") is None or first_latex_error(log):
         return "fix_latex"
 
-    if (state.get("page_count") or 1) > 1:
+    if (state.get("page_count") or 1) > state["options"].max_pages:
         return "reselect"
 
     if find_overfull_boxes(log):
@@ -322,6 +369,7 @@ def build_graph(
     score_llm: BaseChatModel | None = None,
     tailor_llm: BaseChatModel | None = None,
     judge_llm: BaseChatModel | None = None,
+    summary_llm: BaseChatModel | None = None,
     fix_llm: BaseChatModel | None = None,
     letter_llm: BaseChatModel | None = None,
     letter_judge_llm: BaseChatModel | None = None,
@@ -340,6 +388,7 @@ def build_graph(
     builder.add_node("select", node_select)
     builder.add_node("tailor", lambda state: node_tailor(state, llm=tailor_llm))
     builder.add_node("verify", lambda state: node_verify(state, llm=judge_llm))
+    builder.add_node("summary", lambda state: node_summary(state, llm=summary_llm))
     builder.add_node("render", render_latex)
     builder.add_node("compile", compile_pdf)
     builder.add_node("inspect", inspect_pdf)
@@ -369,9 +418,10 @@ def build_graph(
     builder.add_conditional_edges(
         "verify",
         route_after_verify,
-        {"tailor": "tailor", "render": "render"},
+        {"tailor": "tailor", "render": "summary"},
     )
 
+    builder.add_edge("summary", "render")
     builder.add_edge("render", "compile")
     builder.add_edge("compile", "inspect")
 

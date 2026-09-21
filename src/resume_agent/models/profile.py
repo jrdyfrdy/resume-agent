@@ -92,6 +92,53 @@ class ProjectEntry(_Strict):
     bullets: list[Bullet]
 
 
+class LeadershipEntry(_Strict):
+    """A society role, committee, or volunteer post. Same shape as a job.
+
+    Deliberately *not* a bespoke record. Because it carries `bullets` it is an
+    entry, and being an entry is what earns it the whole pipeline for free: the
+    cross-file validators below, retrieval, the knapsack, the grounding gate,
+    the form editor and the chat. A separate shape would have to re-implement
+    each of those or silently skip them.
+
+    It is a distinct type rather than an `ExperienceEntry` with a flag because
+    the two are ordered differently on the page -- see `layout/stage.py`.
+    """
+
+    id: str
+    type: Literal["leadership"]
+    org: str
+    title: str
+    location: str
+    start: YearMonth
+    end: YearMonth | None = None
+    tech: list[str] = Field(default_factory=list)
+    bullets: list[Bullet]
+
+
+class PublicationEntry(_Strict):
+    """A paper, article or talk. Carries bullets, so it is an entry too."""
+
+    id: str
+    type: Literal["publication"]
+    title: str
+    venue: str
+    # A publication has one date, but it is called `start` so the shared
+    # date-range and recency helpers need no special case. `end` stays None and
+    # the renderer prints the single date.
+    start: YearMonth
+    end: YearMonth | None = None
+    url: str | None = None
+    tech: list[str] = Field(default_factory=list)
+    bullets: list[Bullet]
+
+
+# Anything that carries bullets. Used as the argument type wherever code walks
+# `Profile.entries()` without caring which section it came from -- which, after
+# the shared `id`/`start`/`end`/`tech`/`bullets` fields, is nearly everywhere.
+Entry = ExperienceEntry | ProjectEntry | LeadershipEntry | PublicationEntry
+
+
 class EducationEntry(_Strict):
     institution: str
     degree: str
@@ -100,6 +147,10 @@ class EducationEntry(_Strict):
     end: YearMonth | None = None
     gpa: str | None = None
     coursework: list[str] = Field(default_factory=list)
+    # Dean's list, scholarships, latin honours. Printed under the degree in the
+    # student layout, dropped in the experienced one, where the degree alone is
+    # all the space education earns.
+    honors: list[str] = Field(default_factory=list)
 
 
 # --- Supporting collections ------------------------------------------------
@@ -156,6 +207,23 @@ class Certification(_Strict):
     credential_url: str | None = None
 
 
+class Award(_Strict):
+    """A placing, scholarship or honour. One line, no bullets.
+
+    Distinct from `Certification`: a certification is issued on passing
+    something and can expire; an award is placing in something. They print
+    side by side under Education in the student layout, which is why both
+    carry `issuer` and a single date.
+    """
+
+    name: str
+    issuer: str
+    received: YearMonth
+    # "Valid thru Nov. 2027", "GWA 1.70" -- a short qualifier printed in
+    # parentheses. Free text because the variety here is genuinely unbounded.
+    detail: str | None = None
+
+
 # --- The whole profile -----------------------------------------------------
 
 
@@ -166,14 +234,25 @@ class Profile(_Strict):
     education: list[EducationEntry] = Field(default_factory=list)
     experience: list[ExperienceEntry] = Field(default_factory=list)
     projects: list[ProjectEntry] = Field(default_factory=list)
+    leadership: list[LeadershipEntry] = Field(default_factory=list)
+    publications: list[PublicationEntry] = Field(default_factory=list)
     skills: list[Skill] = Field(default_factory=list)
     certifications: list[Certification] = Field(default_factory=list)
+    awards: list[Award] = Field(default_factory=list)
     narratives: list[Narrative] = Field(default_factory=list)
 
     # -- derived views ------------------------------------------------------
 
-    def entries(self) -> list[ExperienceEntry | ProjectEntry]:
-        return [*self.experience, *self.projects]
+    def entries(self) -> list[Entry]:
+        """Everything that carries bullets, in section order.
+
+        The single most important line in this file for the new types. Every
+        cross-file validator below iterates this, and so do retrieval,
+        selection, `chat/extract.py` and `kb/forms.py`. A bullet-carrying type
+        left out of here is not "unsupported" -- it is worse than that, because
+        it loads fine and silently skips every integrity check.
+        """
+        return [*self.experience, *self.projects, *self.leadership, *self.publications]
 
     def all_bullets(self) -> list[Bullet]:
         return [b for entry in self.entries() for b in entry.bullets]

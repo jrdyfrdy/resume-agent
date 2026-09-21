@@ -19,6 +19,7 @@ from resume_agent.latex.compile import compile_tex
 from resume_agent.latex.context import build_resume_context
 from resume_agent.latex.env import render_template
 from resume_agent.latex.inspect import find_overfull_boxes, inspect_output
+from resume_agent.sections import career_stage, this_month
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,15 @@ def render_latex(state: AgentState) -> dict:
 
     tex_source = render_template(
         RESUME_TEMPLATE,
-        build_resume_context(profile, selected_ids=surviving, tailored_text=tailored_text),
+        build_resume_context(
+            profile,
+            selected_ids=surviving,
+            tailored_text=tailored_text,
+            # Resolved from the same options the budget used, so the page the
+            # knapsack costed and the page that renders are the same shape.
+            stage=career_stage(profile, this_month(), override=state["options"].layout),
+            summary=state.get("summary_text") or "",
+        ),
     )
     return {"tex_source": tex_source}
 

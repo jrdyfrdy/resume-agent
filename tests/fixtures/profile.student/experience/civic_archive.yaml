@@ -1,0 +1,26 @@
+id: exp_civic_archive
+type: experience
+org: Civic Archive Trust
+title: Digitisation Intern
+location: Ashford Vale, United Kingdom
+start: 2024-07
+end: 2024-08
+tech: [Python]
+bullets:
+  - id: exp_civic_archive.b1
+    canonical: >-
+      Scripted a Python importer that moved 2,400 scanned index cards into the
+      catalogue with their dates parsed out of the filenames.
+    metrics:
+      cards: 2400
+    skills: [Python]
+    themes: [data, process]
+    confidence: verified
+  - id: exp_civic_archive.b2
+    canonical: >-
+      Sat with two archivists to work out which fields they actually searched
+      on, and dropped the rest from the import.
+    metrics: {}
+    skills: []
+    themes: [process]
+    confidence: verified

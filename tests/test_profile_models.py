@@ -9,6 +9,7 @@ M1 or a mis-attributed bullet in `run.json` at M5.
 from __future__ import annotations
 
 import copy
+import shutil
 from pathlib import Path
 
 import pytest
@@ -181,3 +182,68 @@ def test_entries_are_loaded_in_filename_order(example_profile: Profile) -> None:
         "prj_tilecache",
         "prj_vitals_dashboard",
     ]
+
+
+# ===========================================================================
+# Leadership and publications are entries, not a second-class shape
+#
+# Their whole justification is that carrying bullets makes them entries, and
+# being entries earns them every check below for free. These tests exist to
+# prove that claim rather than assume it -- a type left out of
+# `Profile.entries()` loads fine and silently skips all of them.
+# ===========================================================================
+
+
+STUDENT_PROFILE = PROFILE_EXAMPLE.parent / "tests" / "fixtures" / "profile.student"
+
+
+def test_the_student_fixture_has_all_four_entry_types() -> None:
+    profile = load_profile(STUDENT_PROFILE)
+
+    kinds = {entry.type for entry in profile.entries()}
+    assert kinds == {"experience", "project", "leadership", "publication"}
+
+
+def test_a_leadership_bullet_id_must_be_namespaced(tmp_path: Path) -> None:
+    directory = _copy_student(tmp_path)
+    path = directory / "leadership" / "student_radio.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("ldr_student_radio.b1", "elsewhere.b1"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProfileLoadError, match="must start with"):
+        load_profile(directory)
+
+
+def test_a_publication_may_not_name_an_unknown_skill(tmp_path: Path) -> None:
+    directory = _copy_student(tmp_path)
+    path = directory / "publications" / "caption_study.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("skills: [Python]", "skills: [Kubernetes]"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProfileLoadError, match="not in skills.yaml"):
+        load_profile(directory)
+
+
+def test_entry_ids_are_unique_across_every_type(tmp_path: Path) -> None:
+    """One namespace, which is why `create_entry` prefixes ldr_ and pub_."""
+    directory = _copy_student(tmp_path)
+    path = directory / "leadership" / "student_radio.yaml"
+    path.write_text(
+        path.read_text(encoding="utf-8")
+        .replace("id: ldr_student_radio", "id: exp_harlow_press")
+        .replace("ldr_student_radio.b", "exp_harlow_press.bz"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProfileLoadError, match="duplicate entry ids"):
+        load_profile(directory)
+
+
+def _copy_student(tmp_path: Path) -> Path:
+    directory = tmp_path / "profile"
+    shutil.copytree(STUDENT_PROFILE, directory)
+    return directory

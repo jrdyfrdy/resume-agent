@@ -130,6 +130,20 @@
     \end{tabular*}\vspace{-7pt}
 }
 
+% Like \resumeProjectHeading, but the left column wraps.
+%
+% Not an embellishment: a paper title is long by nature ("Transfer Learning for
+% Fine-Grained Flower Classification on Low-Power Devices" plus a journal name
+% runs ~110pt past the text block), and `tabular*` does not wrap -- it just
+% overflows into the margin and reports an overfull hbox. `tabularx`'s X column
+% is the same table with a width the cell can break inside.
+\newcommand{\resumeWrappingHeading}[2]{
+    \item
+    \begin{tabularx}{0.97\textwidth}{@{}X@{\extracolsep{\fill}}r@{}}
+      \small#1 & #2 \\
+    \end{tabularx}\vspace{-7pt}
+}
+
 \newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
 
 \renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
@@ -154,14 +168,16 @@
     $|$ \href{https://github.com/johndoe}{\underline{github.com/johndoe}}
 \end{center}
 
-%----------EDUCATION----------
-\section{Education}
-  \resumeSubHeadingListStart
-    \resumeSubheading
-      {University of California, Santa Cruz}{Santa Cruz, CA}
-      {B.S. Computer Science}{Sept. 2016 -- June 2020}
-  \resumeSubHeadingListEnd
-
+% Sections are emitted in the order latex/context.py computed for this profile's
+% career stage -- education first while a degree is the strongest thing on the
+% page, work first once it is not. Nothing here hardcodes an order, and a section
+% whose entries all lost the line budget renders nothing at all.
+%
+% Written as LaTeX comments rather than Jinja line comments on purpose: a Jinja
+% line comment removes its text but leaves the newline behind, and five stray
+% blank lines here are five paragraph breaks LaTeX will happily act on. (As with
+% the banner above, this note cannot spell that prefix out -- Jinja would eat the
+% rest of the line, which is exactly the hazard being described.)
 %----------EXPERIENCE----------
 \section{Experience}
   \resumeSubHeadingListStart
@@ -183,30 +199,28 @@
         \resumeItem{Cut CI feedback from 22 to 6 minutes by sharding pytest across GitHub Actions runners with a stdout \textbar{} jq failure summary}
       \resumeItemListEnd
   \resumeSubHeadingListEnd
-
 %----------PROJECTS----------
 \section{Projects}
     \resumeSubHeadingListStart
-      \resumeProjectHeading
+      \resumeWrappingHeading
           {\textbf{LedgerLint} $|$ \emph{Python, DuckDB, pandas, Testing}}{Nov. 2023 -- May 2024}
           \resumeItemListStart
             \resumeItem{Built a DuckDB-backed linter that flags unbalanced double-entry journals, catching 340 defects across 6 public ledgers}
             \resumeItem{Cut a 12-minute full-ledger scan to 43s by pushing predicate filters into DuckDB instead of pandas}
           \resumeItemListEnd
-      \resumeProjectHeading
+      \resumeWrappingHeading
           {\textbf{TileCache} $|$ \emph{TypeScript, Node.js, Redis, Docker}}{June 2022 -- Mar. 2023}
           \resumeItemListStart
             \resumeItem{Shipped a Node.js \textasciicircum{}18 tile cache serving 4.1M requests/day at a 94\% hit rate and p99 under 30ms}
             \resumeItem{Added a Redis invalidation path keyed on \{z\}/\{x\}/\{y\} so stale tiles expire within 2 seconds of a source update}
           \resumeItemListEnd
-      \resumeProjectHeading
+      \resumeWrappingHeading
           {\textbf{VitalsBoard} $|$ \emph{React, TypeScript, FastAPI, PostgreSQL, Observability}}{May 2021 -- Dec. 2021}
           \resumeItemListStart
             \resumeItem{Built a React and FastAPI dashboard rendering 18-month vitals trends for \textasciitilde{}3k synthetic patients from a single query}
             \resumeItem{Instrumented it with OpenTelemetry traces, cutting median debug time on data gaps from 40 to 8 minutes}
           \resumeItemListEnd
     \resumeSubHeadingListEnd
-
 %----------TECHNICAL SKILLS----------
 \section{Technical Skills}
  \begin{itemize}[leftmargin=0.15in, label={}]
@@ -218,6 +232,13 @@
      \textbf{Practices}{: Caching, Query Optimization, Performance Profiling, Observability, API Design, CI/CD, Testing, Data Modeling, Cost Optimization, Incident Response}
     }}
  \end{itemize}
+%----------EDUCATION----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of California, Santa Cruz}{Santa Cruz, CA}
+      {B.S. Computer Science}{Sept. 2016 -- June 2020}
+  \resumeSubHeadingListEnd
 
 %-------------------------------------------
 \end{document}

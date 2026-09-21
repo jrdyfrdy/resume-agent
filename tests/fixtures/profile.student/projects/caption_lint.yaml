@@ -1,0 +1,33 @@
+id: prj_caption_lint
+type: project
+name: CaptionLint
+start: 2026-01
+end: 2026-05
+tech: [Python, Flask]
+repo_url: https://example.com/janedoe/captionlint
+bullets:
+  - id: prj_caption_lint.b1
+    canonical: >-
+      Built a Flask tool that scores subtitle files for reading speed and flags
+      lines that stay on screen too briefly to read.
+    metrics: {}
+    skills: [Python, Flask]
+    themes: [accessibility, tooling]
+    confidence: verified
+  - id: prj_caption_lint.b2
+    canonical: >-
+      Checked the scoring against 30 hours of lecture captions and tuned the
+      threshold until it stopped flagging ordinary dialogue.
+    metrics:
+      hours_checked: 30
+    skills: [Python]
+    themes: [accessibility, testing]
+    confidence: approximate
+  - id: prj_caption_lint.b3
+    canonical: >-
+      Packaged it as a command-line check so a course team can run it over a
+      folder before publishing.
+    metrics: {}
+    skills: [Python]
+    themes: [tooling]
+    confidence: verified

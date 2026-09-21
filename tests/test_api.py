@@ -192,18 +192,19 @@ def test_the_tabs_are_a_real_tablist() -> None:
     assert "ArrowRight" in text and "ArrowLeft" in text
 
 
-def test_the_guide_says_where_the_knowledge_base_goes() -> None:
-    """The question this tab exists to answer. `profile/` is gitignored and is
-    not created by anything, so nothing else on disk tells you.
+def test_the_guide_promises_the_data_stays_put() -> None:
+    """The question this tab exists to answer, phrased as the promise rather
+    than the mechanism.
 
-    No longer asserts a `cp -r` command: the Guide points at the in-app Create
-    button now, because a user who never has to know the file format should not
-    be handed a shell command as step one.
+    It used to assert the literal word "gitignored", which made the test a lock
+    on vocabulary rather than on meaning -- and "gitignored" is exactly the kind
+    of word that tells a non-developer this tool is not for them. What has to
+    survive a rewrite is the guarantee, not the jargon that happened to carry it.
     """
     text = page_source()
 
-    assert "Create my profile" in text
-    assert "gitignored" in text
+    assert "stays on this computer" in text
+    assert "dated backup" in text
 
 
 def test_the_guide_stopped_teaching_yaml() -> None:
@@ -215,7 +216,9 @@ def test_the_guide_stopped_teaching_yaml() -> None:
 
     assert "canonical:" not in guide
     assert "skills.yaml" not in guide
-    assert "allow-list" in guide
+    # The rule, not the word for it. "Allow-list" was the term this asserted,
+    # and it is jargon the Guide no longer needs to reach for.
+    assert "skills you have listed" in guide
 
 
 def test_the_run_request_carries_the_chosen_profile() -> None:
@@ -326,10 +329,19 @@ def test_labels_are_not_dressed_up_as_telemetry() -> None:
 
     assert "text-transform: uppercase" not in styles
     assert "letter-spacing: .1em" not in styles
+
+
+def test_every_class_used_is_styled() -> None:
     """Caught a real one: `.sr-only` survived in the markup but its rule was
     lost in a rewrite, so a screen-reader-only label rendered as a heading in
     the middle of the editor. A class that styles nothing is either dead markup
-    or a missing rule, and both are worth knowing about."""
+    or a missing rule, and both are worth knowing about.
+
+    This body had lost its own `def` line and was running as the tail of the
+    test above -- so it passed under a name that described something else, and
+    would have been skipped entirely the first time that test's assertions
+    failed.
+    """
     text = page_source()
     styles = text.split("<style>")[1].split("</style>")[0]
 
@@ -346,6 +358,112 @@ def test_labels_are_not_dressed_up_as_telemetry() -> None:
 
     undefined = {name for name in names if f".{name}" not in styles}
     assert not undefined, f"classes used in markup but never styled: {sorted(undefined)}"
+
+
+# ===========================================================================
+# Simple by default
+#
+# The tool's job is "paste a job ad, get a PDF". Everything that explains how it
+# does that is machinery, and machinery is what the Advanced switch is for.
+# ===========================================================================
+
+
+def test_no_internal_node_name_is_shown_by_default() -> None:
+    """`parse_jd`, `shrink_budget` and `note_overfull` are names for parts of
+    the graph. They are useful when a run misbehaves and meaningless otherwise,
+    so every one of them has to sit inside something marked `.adv-only`."""
+    markup = without_comments(page_source()).split("<script>")[0]
+
+    # The names live in the PHASES table, which is script; the rail that renders
+    # them is markup, and that section has to carry the class.
+    assert re.search(
+        r'<section class="adv-only">\s*<h2>Pipeline</h2>', markup
+    ), "the pipeline rail is no longer behind the Advanced switch"
+
+    # Only the distinctive ones: "render", "score" and "compile" are ordinary
+    # English and appear in perfectly good copy.
+    for node in ("parse_jd", "shrink_budget", "note_overfull", "revision_cap",
+                 "fix_latex", "cover_letter", "human_review"):
+        assert node not in markup, f"{node} is printed in the page's static markup"
+
+
+def test_the_expert_controls_are_behind_the_switch() -> None:
+    """Three controls a person would decide about a resume stay; three names for
+    parts of the machine do not."""
+    text = page_source()
+
+    for control in ("judge", "strict", "layout"):
+        pattern = rf'<label class="check adv-only"[^>]*>\s*<input[^>]*id="{control}"'
+        assert re.search(pattern, text) or f'adv-only" for="{control}"' in text, control
+
+    # ...and the three that stay are not marked.
+    for control in ("letter", "summary"):
+        assert f'<label class="check"><input type="checkbox" id="{control}"' in text
+
+
+def test_the_switch_hides_rather_than_shows() -> None:
+    """The rule is scoped to `body:not([data-advanced])` on purpose.
+
+    A plain `.adv-only { display: none }` loses on specificity to
+    `label.check { display: flex }`, which left every expert control on screen
+    with the switch off. Inverting it also means each element keeps its own
+    display type when the switch is on, instead of being reverted to the
+    user-agent default.
+    """
+    styles = without_comments(page_source()).split("<style>")[1].split("</style>")[0]
+
+    assert "body:not([data-advanced]) .adv-only { display: none; }" in styles
+    assert "display: revert" not in styles
+
+
+def test_the_switch_is_remembered() -> None:
+    text = page_source()
+
+    assert 'id="advanced"' in text
+    assert "resume-agent.advanced" in text
+
+
+def test_progress_is_shown_as_phases_not_stages() -> None:
+    """A run takes about a minute and the rail is hidden, so something has to
+    hold attention -- five named steps driven by the same node events."""
+    text = page_source()
+
+    for label in ("Reading the posting", "Writing your lines", "Typesetting the page",
+                  "Cover letter", "Finishing"):
+        assert label in text, label
+    assert 'id="steps"' in text
+
+
+def test_the_page_stopped_counting_stages_wrong() -> None:
+    """The copy said "sixteen stages" while the rail drew seventeen, from the
+    summary node being added without the sentence being updated. A hardcoded
+    count is a thing that goes stale silently, so there is no longer one."""
+    text = without_comments(page_source()).lower()
+
+    assert "sixteen" not in text
+    assert "seventeen" not in text
+
+
+def test_no_native_prompt_or_confirm_survives() -> None:
+    """Four of them, and the worst asked for your name in a box where leaving it
+    blank silently meant "copy the fictional example instead"."""
+    script = page_source().split("<script>")[1]
+    stripped = re.sub(r"//[^\n]*|/\*.*?\*/", "", script, flags=re.S)
+
+    assert not re.search(r"(?<![\w.])prompt\(", stripped)
+    assert not re.search(r"(?<![\w.])confirm\(", stripped)
+    assert "<dialog" in page_source()
+
+
+def test_the_first_run_panel_hands_over_no_shell_command() -> None:
+    """It used to open with `cp -r profile.example profile` as step one, for a
+    tool whose whole point is that you never see the file format."""
+    text = without_comments(page_source())
+
+    assert "cp -r" not in text
+    # Still named in the editor's own "which files can be removed" logic, which
+    # is script rather than something a person reads.
+    assert "identity.yaml" not in text.split("<script>")[0]
 
 
 def test_the_editor_explains_what_a_save_does() -> None:
@@ -885,6 +1003,18 @@ def test_graph_nodes_list_matches_the_real_graph() -> None:
 
     real = {n for n in build_graph().get_graph().nodes if not n.startswith("__")}
     assert real <= GRAPH_NODES, f"nodes missing from the UI filter: {real - GRAPH_NODES}"
+
+
+def without_comments(text: str) -> str:
+    """The page with its own commentary removed.
+
+    Assertions about what a user can see must not match the source comments
+    explaining *why* something is hidden -- otherwise a note reading "this used
+    to say `cp -r`" fails the test that checks `cp -r` is gone.
+    """
+    text = re.sub(r"<!--.*?-->", "", text, flags=re.S)
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+    return re.sub(r"^\s*//[^\n]*$", "", text, flags=re.M)
 
 
 def page_source() -> str:

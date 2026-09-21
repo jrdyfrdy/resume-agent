@@ -1,0 +1,23 @@
+id: prj_seat_planner
+type: project
+name: Seat Planner
+start: 2025-02
+end: 2025-06
+tech: [TypeScript, Vue, SQL]
+bullets:
+  - id: prj_seat_planner.b1
+    canonical: >-
+      Built a Vue interface that lets an exam officer lay out a hall and see
+      which candidates need step-free or extra-time seating.
+    metrics: {}
+    skills: [Vue, TypeScript]
+    themes: [frontend, accessibility]
+    confidence: verified
+  - id: prj_seat_planner.b2
+    canonical: >-
+      Wrote the allocator that keeps candidates from the same course apart while
+      honouring every seating requirement it is given.
+    metrics: {}
+    skills: [SQL]
+    themes: [backend]
+    confidence: verified

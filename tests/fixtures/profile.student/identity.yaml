@@ -1,0 +1,14 @@
+# Fake person. A fresh-graduate counterpart to profile.example, used by the
+# tests that exercise the student section order. Invented from nothing: no part
+# of this describes any real person, and the phone number is in the range
+# reserved for fiction.
+name: Jane Doe
+email: jane.doe@example.edu
+phone: +44 20 7946 0100
+location: Kingsbridge, UK
+links:
+  - label: linkedin.com/in/janedoe
+    url: linkedin.com/in/janedoe
+  - label: github.com/janedoe
+    url: github.com/janedoe
+work_authorization: UK Citizen

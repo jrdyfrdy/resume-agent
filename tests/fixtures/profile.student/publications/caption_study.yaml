@@ -1,0 +1,26 @@
+id: pub_caption_study
+type: publication
+title: Reading Speed as a Practical Quality Signal for Lecture Captions
+venue: Journal of Learning Technology Practice
+start: 2026-03
+url: https://example.com/jltp/vol7/2
+tech: [Python]
+bullets:
+  - id: pub_caption_study.b1
+    canonical: >-
+      Measured reading speed across 45 hours of automatically generated lecture
+      captions from 6 departments.
+    metrics:
+      hours: 45
+      departments: 6
+    skills: [Python]
+    themes: [research, accessibility]
+    confidence: verified
+  - id: pub_caption_study.b2
+    canonical: >-
+      Showed that a simple characters-per-second threshold caught most of the
+      captions reviewers had independently marked as hard to follow.
+    metrics: {}
+    skills: []
+    themes: [research, accessibility]
+    confidence: approximate

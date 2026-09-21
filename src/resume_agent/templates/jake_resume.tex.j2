@@ -130,6 +130,20 @@
     \end{tabular*}\vspace{-7pt}
 }
 
+% Like \resumeProjectHeading, but the left column wraps.
+%
+% Not an embellishment: a paper title is long by nature ("Transfer Learning for
+% Fine-Grained Flower Classification on Low-Power Devices" plus a journal name
+% runs ~110pt past the text block), and `tabular*` does not wrap -- it just
+% overflows into the margin and reports an overfull hbox. `tabularx`'s X column
+% is the same table with a width the cell can break inside.
+\newcommand{\resumeWrappingHeading}[2]{
+    \item
+    \begin{tabularx}{0.97\textwidth}{@{}X@{\extracolsep{\fill}}r@{}}
+      \small#1 & #2 \\
+    \end{tabularx}\vspace{-7pt}
+}
+
 \newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
 
 \renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
@@ -155,20 +169,57 @@
 \BLOCK{endfor}
 \end{center}
 
+% Sections are emitted in the order latex/context.py computed for this profile's
+% career stage -- education first while a degree is the strongest thing on the
+% page, work first once it is not. Nothing here hardcodes an order, and a section
+% whose entries all lost the line budget renders nothing at all.
+%
+% Written as LaTeX comments rather than Jinja line comments on purpose: a Jinja
+% line comment removes its text but leaves the newline behind, and five stray
+% blank lines here are five paragraph breaks LaTeX will happily act on. (As with
+% the banner above, this note cannot spell that prefix out -- Jinja would eat the
+% rest of the line, which is exactly the hazard being described.)
+\BLOCK{for section in sections}
+\BLOCK{if section == "summary" and summary}
+%----------SUMMARY----------
+\section{Summary}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{\VAR{summary | tex}}}
+ \end{itemize}
+\BLOCK{endif}
+\BLOCK{if section == "education" and education}
 %----------EDUCATION----------
-\BLOCK{if education}
-\section{Education}
+\section{Education\BLOCK{if credentials}, Awards \& Certifications\BLOCK{endif}}
   \resumeSubHeadingListStart
 \BLOCK{for school in education}
     \resumeSubheading
       {\VAR{school.institution | tex}}{\VAR{school.location | tex}}
       {\VAR{school.degree | tex}}{\VAR{school.dates | tex}}
+\BLOCK{if school.gpa or school.honors or school.coursework}
+      \resumeItemListStart
+\BLOCK{if school.gpa}
+        \resumeItem{GPA: \VAR{school.gpa | tex}}
+\BLOCK{endif}
+\BLOCK{for honor in school.honors}
+        \resumeItem{\VAR{honor | tex}}
 \BLOCK{endfor}
+\BLOCK{if school.coursework}
+        \resumeItem{Relevant coursework: \VAR{school.coursework | join(', ') | tex}}
+\BLOCK{endif}
+      \resumeItemListEnd
+\BLOCK{endif}
+\BLOCK{endfor}
+\BLOCK{if credentials}
+      \resumeItemListStart
+\BLOCK{for credential in credentials}
+        \resumeItem{\VAR{credential.text | tex}}
+\BLOCK{endfor}
+      \resumeItemListEnd
+\BLOCK{endif}
   \resumeSubHeadingListEnd
 \BLOCK{endif}
-
+\BLOCK{if section == "experience" and experience}
 %----------EXPERIENCE----------
-\BLOCK{if experience}
 \section{Experience}
   \resumeSubHeadingListStart
 \BLOCK{for job in experience}
@@ -183,13 +234,12 @@
 \BLOCK{endfor}
   \resumeSubHeadingListEnd
 \BLOCK{endif}
-
+\BLOCK{if section == "projects" and projects}
 %----------PROJECTS----------
-\BLOCK{if projects}
 \section{Projects}
     \resumeSubHeadingListStart
 \BLOCK{for project in projects}
-      \resumeProjectHeading
+      \resumeWrappingHeading
           {\textbf{\VAR{project.name | tex}} $|$ \emph{\VAR{project.tech | tex}}}{\VAR{project.dates | tex}}
           \resumeItemListStart
 \BLOCK{for bullet in project.bullets}
@@ -199,9 +249,39 @@
 \BLOCK{endfor}
     \resumeSubHeadingListEnd
 \BLOCK{endif}
-
+\BLOCK{if section == "leadership" and leadership}
+%----------LEADERSHIP----------
+\section{Leadership Experience}
+  \resumeSubHeadingListStart
+\BLOCK{for role in leadership}
+    \resumeSubheading
+      {\VAR{role.title | tex}}{\VAR{role.dates | tex}}
+      {\VAR{role.org | tex}}{\VAR{role.location | tex}}
+      \resumeItemListStart
+\BLOCK{for bullet in role.bullets}
+        \resumeItem{\VAR{bullet | tex}}
+\BLOCK{endfor}
+      \resumeItemListEnd
+\BLOCK{endfor}
+  \resumeSubHeadingListEnd
+\BLOCK{endif}
+\BLOCK{if section == "publications" and publications}
+%----------PUBLICATIONS----------
+\section{Publications}
+    \resumeSubHeadingListStart
+\BLOCK{for paper in publications}
+      \resumeWrappingHeading
+          {\textbf{\VAR{paper.title | tex}} $|$ \emph{\VAR{paper.venue | tex}}}{\VAR{paper.dates | tex}}
+          \resumeItemListStart
+\BLOCK{for bullet in paper.bullets}
+            \resumeItem{\VAR{bullet | tex}}
+\BLOCK{endfor}
+          \resumeItemListEnd
+\BLOCK{endfor}
+    \resumeSubHeadingListEnd
+\BLOCK{endif}
+\BLOCK{if section == "skills" and skill_groups}
 %----------TECHNICAL SKILLS----------
-\BLOCK{if skill_groups}
 \section{Technical Skills}
  \begin{itemize}[leftmargin=0.15in, label={}]
     \small{\item{
@@ -212,6 +292,7 @@
     }}
  \end{itemize}
 \BLOCK{endif}
+\BLOCK{endfor}
 
 %-------------------------------------------
 \end{document}

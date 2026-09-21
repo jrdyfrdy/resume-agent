@@ -1,0 +1,5 @@
+certifications:
+  - name: Accessibility Foundations
+    issuer: Open Accessibility Institute
+    issued: 2025-10
+    credential_url: https://example.com/credential/a11y-found

@@ -1,0 +1,9 @@
+# Placings and honours. Distinct from certifications: you place in these.
+awards:
+  - name: Best Accessibility Project
+    issuer: Kingsbridge Student Showcase
+    received: 2025-11
+  - name: Highly Commended
+    issuer: National Student Software Awards
+    received: 2026-04
+    detail: 1 of 5 shortlisted

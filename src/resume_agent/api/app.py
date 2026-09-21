@@ -100,8 +100,8 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # The graph's own node names. Everything else in the event stream is an internal
 # runnable the page has no use for.
 GRAPH_NODES = {
-    "parse_jd", "retrieve", "score", "select", "tailor", "verify", "render",
-    "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull",
+    "parse_jd", "retrieve", "score", "select", "tailor", "verify", "summary",
+    "render", "compile", "inspect", "fix_latex", "shrink_budget", "note_overfull",
     "cover_letter", "human_review", "revision_cap", "finalize",
 }  # fmt: skip
 
@@ -552,6 +552,9 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
             strict=request.strict,
             use_judge=request.use_judge,
             write_cover_letter=request.write_cover_letter,
+            max_pages=request.max_pages,
+            layout=request.layout,
+            summary=request.summary,
         )
         graph = graph_factory()
         state_in = initial_state(request.jd, request.profile, options)

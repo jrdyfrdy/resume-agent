@@ -1,0 +1,26 @@
+id: ldr_access_society
+type: leadership
+org: Kingsbridge Inclusive Tech Society
+title: Secretary
+location: Kingsbridge, United Kingdom
+start: 2024-10
+end: 2025-09
+tech: []
+bullets:
+  - id: ldr_access_society.b1
+    canonical: >-
+      Ran a fortnightly clinic where students brought coursework to be checked
+      for accessibility before submitting it.
+    metrics: {}
+    skills: []
+    themes: [leadership, teaching]
+    confidence: verified
+  - id: ldr_access_society.b2
+    canonical: >-
+      Wrote the society's handover document, which the next two committees have
+      carried on using.
+    metrics:
+      committees: 2
+    skills: []
+    themes: [leadership, process]
+    confidence: approximate

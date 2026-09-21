@@ -31,8 +31,11 @@ IDENTITY_FILE = "identity.yaml"
 EDUCATION_FILE = "education.yaml"
 SKILLS_FILE = "skills.yaml"
 CERTIFICATIONS_FILE = "certifications.yaml"
+AWARDS_FILE = "awards.yaml"
 EXPERIENCE_DIR = "experience"
 PROJECTS_DIR = "projects"
+LEADERSHIP_DIR = "leadership"
+PUBLICATIONS_DIR = "publications"
 NARRATIVES_DIR = "narratives"
 
 
@@ -53,19 +56,25 @@ def load_profile(profile_dir: Path) -> Profile:
     education = _read_keyed_list(profile_dir / EDUCATION_FILE, key="education")
     skills = _read_keyed_list(profile_dir / SKILLS_FILE, key="skills", required=True)
     certifications = _read_keyed_list(profile_dir / CERTIFICATIONS_FILE, key="certifications")
+    awards = _read_keyed_list(profile_dir / AWARDS_FILE, key="awards")
 
     narratives = _read_narratives(profile_dir / NARRATIVES_DIR)
     experience = _read_entry_dir(profile_dir / EXPERIENCE_DIR)
     projects = _read_entry_dir(profile_dir / PROJECTS_DIR)
+    leadership = _read_entry_dir(profile_dir / LEADERSHIP_DIR)
+    publications = _read_entry_dir(profile_dir / PUBLICATIONS_DIR)
 
     payload: dict[str, Any] = {
         "identity": identity,
         "education": education,
         "skills": skills,
         "certifications": certifications,
+        "awards": awards,
         "narratives": narratives,
         "experience": experience,
         "projects": projects,
+        "leadership": leadership,
+        "publications": publications,
     }
 
     try:

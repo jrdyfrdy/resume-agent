@@ -1,0 +1,35 @@
+id: exp_harlow_press
+type: experience
+org: Harlow Press
+title: Accessibility QA Intern
+location: Kingsbridge, United Kingdom
+start: 2025-06
+end: 2025-09
+tech: [Selenium, Python]
+bullets:
+  - id: exp_harlow_press.b1
+    canonical: >-
+      Wrote a Selenium suite that checked 60 catalogue pages for missing alt
+      text and unlabelled form fields on every release.
+    metrics:
+      pages_checked: 60
+    skills: [Selenium]
+    themes: [testing, accessibility]
+    confidence: verified
+  - id: exp_harlow_press.b2
+    canonical: >-
+      Rewrote the reading-order markup on the checkout flow after screen-reader
+      testing found it announced the price before the product name.
+    metrics: {}
+    skills: []
+    themes: [accessibility, frontend]
+    confidence: verified
+  - id: exp_harlow_press.b3
+    canonical: >-
+      Wrote the triage notes for 18 reported defects so the permanent team could
+      pick them up after the placement ended.
+    metrics:
+      defects: 18
+    skills: []
+    themes: [process]
+    confidence: verified

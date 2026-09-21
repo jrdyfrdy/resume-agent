@@ -1,0 +1,26 @@
+id: ldr_student_radio
+type: leadership
+org: Kingsbridge Student Radio
+title: Technical Lead
+location: Kingsbridge, United Kingdom
+start: 2023-10
+end: 2024-06
+tech: []
+bullets:
+  - id: ldr_student_radio.b1
+    canonical: >-
+      Took the station's broadcast rig from one working desk to two, so a show
+      could set up while another was still on air.
+    metrics: {}
+    skills: []
+    themes: [leadership, operations]
+    confidence: verified
+  - id: ldr_student_radio.b2
+    canonical: >-
+      Trained 12 presenters on the desk and wrote the one-page guide taped next
+      to it.
+    metrics:
+      presenters: 12
+    skills: []
+    themes: [leadership, teaching]
+    confidence: verified

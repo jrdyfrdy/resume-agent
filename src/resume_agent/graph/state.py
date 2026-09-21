@@ -26,6 +26,7 @@ from resume_agent.models.fit import EvidenceMatch, FitReport
 from resume_agent.models.job import JobSpec
 from resume_agent.models.letter import CoverLetter
 from resume_agent.models.resume import TailoredBullet
+from resume_agent.sections import LayoutChoice
 
 
 class RunOptions(BaseModel):
@@ -50,6 +51,20 @@ class RunOptions(BaseModel):
     write_cover_letter: bool = True
     # Spec 5: gate `human_review` behind a flag "so batch runs don't block".
     interactive: bool = False
+    # One page is the spec's definition of done and stays the default. Two is
+    # reachable for the profiles that genuinely need it -- an academic record
+    # with publications, or a fresh graduate whose leadership and coursework are
+    # the evidence. The budget for each page count is separately calibrated.
+    max_pages: int = 1
+    # Section order. "auto" derives it from the profile (see `sections.py`);
+    # the two explicit values are for the minority counting gets wrong, such as
+    # a career changer whose months of experience are in another field.
+    layout: LayoutChoice = "auto"
+    # A generated professional summary, gated against the selected bullets.
+    # Off by default: it costs four lines of a ~32-line page, and those lines
+    # are only worth spending when the summary says something the achievements
+    # underneath it do not.
+    summary: bool = False
 
 
 class AgentState(TypedDict, total=False):
@@ -85,6 +100,9 @@ class AgentState(TypedDict, total=False):
     review_action: str
 
     # -- artifacts -----------------------------------------------------------
+    # Empty when no summary was asked for, or when the gate rejected every
+    # attempt -- the renderer treats both the same way and prints no section.
+    summary_text: str
     tex_source: str | None
     pdf_path: str | None
     compile_log: str | None

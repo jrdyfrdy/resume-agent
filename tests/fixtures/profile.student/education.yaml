@@ -1,0 +1,13 @@
+# `end` is in the future on purpose: it is what makes `still_studying` true and
+# pins the student stage for this fixture.
+education:
+  - institution: Kingsbridge Polytechnic Institute
+    degree: B.S. Information Systems
+    location: Kingsbridge, United Kingdom
+    start: 2022-09
+    end: 2026-07
+    gpa: '3.41/4.00'
+    coursework: [Human-Computer Interaction, Database Systems, Software Testing]
+    honors:
+      - Faculty Commendation (4 terms)
+      - Kingsbridge Entrance Scholarship

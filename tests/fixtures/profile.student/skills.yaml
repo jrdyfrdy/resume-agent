@@ -1,0 +1,53 @@
+# Same contract as profile.example/skills.yaml: canonical display casing,
+# aliases for query expansion and the fabrication allow-list.
+skills:
+  - canonical: Python
+    aliases: [py, python3]
+    category: language
+    level: working
+    first_used: 2022-10
+  - canonical: Java
+    aliases: [jvm]
+    category: language
+    level: familiar
+    first_used: 2023-02
+  - canonical: SQL
+    aliases: [postgresql, postgres]
+    category: language
+    level: working
+    first_used: 2023-06
+  - canonical: TypeScript
+    aliases: [ts, javascript, js]
+    category: language
+    level: working
+    first_used: 2023-09
+  - canonical: Selenium
+    aliases: [webdriver, selenium grid]
+    category: automation
+    level: working
+    first_used: 2025-01
+  - canonical: Django
+    aliases: [django rest framework]
+    category: framework
+    level: working
+    first_used: 2024-03
+  - canonical: Vue
+    aliases: [vue.js, vuejs]
+    category: framework
+    level: familiar
+    first_used: 2024-08
+  - canonical: Flask
+    aliases: [flask api]
+    category: framework
+    level: familiar
+    first_used: 2025-02
+  - canonical: Git
+    aliases: [version control]
+    category: dev_tools
+    level: working
+    first_used: 2022-11
+  - canonical: Figma
+    aliases: [figma prototypes]
+    category: dev_tools
+    level: familiar
+    first_used: 2024-05

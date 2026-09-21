@@ -36,12 +36,15 @@ from ruamel.yaml.comments import CommentedSeq
 from ruamel.yaml.scalarstring import FoldedScalarString, LiteralScalarString
 
 from resume_agent.kb.loader import (
+    AWARDS_FILE,
     CERTIFICATIONS_FILE,
     EDUCATION_FILE,
     EXPERIENCE_DIR,
     IDENTITY_FILE,
+    LEADERSHIP_DIR,
     NARRATIVES_DIR,
     PROJECTS_DIR,
+    PUBLICATIONS_DIR,
     SKILLS_FILE,
     load_profile,
 )
@@ -143,6 +146,10 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
             Field("end", "Ended", "month"),
             Field("gpa", "GPA", "text", help="Written as text, e.g. 3.7."),
             Field("coursework", "Coursework", "chips", suggest="coursework"),
+            Field("honors", "Honours", "chips", suggest="honors",
+                  help="Dean's list, scholarships, latin honours. Printed under the "
+                       "degree while you are early in your career, and dropped once "
+                       "your work history is the stronger evidence."),
         )),
     )),
     "skills": ("keyed_list", "skills", (
@@ -166,6 +173,18 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
             Field("credential_url", "Verification link", "text"),
         )),
     )),
+    "awards": ("keyed_list", "awards", (
+        Field("awards", "Awards", "objects", key="name", fields=(
+            Field("name", "Award", "text", required=True,
+                  placeholder="1st Runner-Up"),
+            Field("issuer", "Awarded by", "text", required=True,
+                  placeholder="National Programming Competition"),
+            Field("received", "Received", "month", required=True),
+            Field("detail", "Detail", "text",
+                  help="A short qualifier printed in parentheses.",
+                  placeholder="1 of 3 awarded"),
+        )),
+    )),
     "experience": ("entry", None, (
         Field("org", "Employer", "text", required=True),
         Field("title", "Job title", "text", required=True),
@@ -176,6 +195,19 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
         Field("role", "Your role", "text"),
         Field("repo_url", "Repository", "text"),
         Field("live_url", "Live link", "text"),
+    ) + _ENTRY_TAIL),
+    "leadership": ("entry", None, (
+        Field("org", "Organisation", "text", required=True,
+              placeholder="Computer Engineering Society"),
+        Field("title", "Your role", "text", required=True,
+              placeholder="Vice President for Academics"),
+        Field("location", "Location", "text", required=True),
+    ) + _ENTRY_TAIL),
+    "publication": ("entry", None, (
+        Field("title", "Title", "text", required=True),
+        Field("venue", "Published in", "text", required=True,
+              placeholder="Journal of Applied Engineering Research"),
+        Field("url", "Link", "text"),
     ) + _ENTRY_TAIL),
     "narrative": ("prose", None, (
         Field("title", "Title", "text", required=True, placeholder="How I learn"),
@@ -231,6 +263,10 @@ def document_role(relative: str) -> str:
         return "experience"
     if path.startswith(f"{PROJECTS_DIR}/"):
         return "project"
+    if path.startswith(f"{LEADERSHIP_DIR}/"):
+        return "leadership"
+    if path.startswith(f"{PUBLICATIONS_DIR}/"):
+        return "publication"
     if path.startswith(f"{NARRATIVES_DIR}/"):
         return "narrative"
     role = {
@@ -238,6 +274,7 @@ def document_role(relative: str) -> str:
         EDUCATION_FILE: "education",
         SKILLS_FILE: "skills",
         CERTIFICATIONS_FILE: "certifications",
+        AWARDS_FILE: "awards",
     }.get(path)
     if role is None:
         raise ProfileWriteError(f"no form knows how to edit {relative!r}")
@@ -539,18 +576,27 @@ def slugify(name: str) -> str:
     return slug or "untitled"
 
 
-def create_entry(profile_dir: Path, role: str, name: str) -> str:
-    """Add a job or a project. Returns the new file's relative path.
+# role -> (id prefix, directory). One namespace across every entry type, which
+# is what `Profile._ids_are_unique` enforces -- so the prefix is what keeps a
+# job and a leadership role at the same organisation from colliding.
+ID_PREFIXES: dict[str, tuple[str, str]] = {
+    "experience": ("exp", EXPERIENCE_DIR),
+    "project": ("prj", PROJECTS_DIR),
+    "leadership": ("ldr", LEADERSHIP_DIR),
+    "publication": ("pub", PUBLICATIONS_DIR),
+}
 
-    Both the filename and the id are generated. The id has to be unique across
-    experience *and* projects -- they share one namespace -- and every bullet
-    added later is namespaced under it.
+
+def create_entry(profile_dir: Path, role: str, name: str) -> str:
+    """Add a job, project, leadership role or publication.
+
+    Returns the new file's relative path. Both the filename and the id are
+    generated, and every bullet added later is namespaced under the id.
     """
-    if role not in ("experience", "project"):
+    if role not in ID_PREFIXES:
         raise ProfileWriteError(f"cannot create a {role!r}")
 
-    directory = EXPERIENCE_DIR if role == "experience" else PROJECTS_DIR
-    prefix = "exp" if role == "experience" else "prj"
+    prefix, directory = ID_PREFIXES[role]
     slug = slugify(name)
 
     taken = _existing_ids(profile_dir)
@@ -571,8 +617,11 @@ def create_entry(profile_dir: Path, role: str, name: str) -> str:
     # required, and `type` is fixed by the directory. Written through the same
     # writer as everything else, so it is validated and backed up like any save.
     scaffold: dict[str, Any] = {"id": entry_id, "type": role}
-    if role == "experience":
+    if role in ("experience", "leadership"):
+        # Same fields: a society role and a job are the same shape on the page.
         scaffold.update({"org": name, "title": "", "location": ""})
+    elif role == "publication":
+        scaffold.update({"title": name, "venue": "", "url": None})
     else:
         scaffold.update({"name": name})
     scaffold.update({"start": _this_month(), "end": None, "tech": [], "bullets": []})

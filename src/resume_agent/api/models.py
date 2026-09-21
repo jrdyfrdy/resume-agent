@@ -12,10 +12,20 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from resume_agent.latex.context import format_date_range
+from resume_agent.latex.context import format_date_range, format_year_month
 from resume_agent.models.profile import Bullet, Profile
 
 RunStatus = Literal["queued", "running", "paused", "done", "failed"]
+
+
+def _dates(start: str, end: str | None) -> str:
+    """A date range for the browser.
+
+    `format_date_range` defaults to a LaTeX en-dash (`--`), which is right for
+    the template and wrong here: in HTML it prints as two literal hyphens, which
+    is exactly what the Browse view was showing.
+    """
+    return format_date_range(start, end, dash="–")
 
 
 class RunRequest(BaseModel):
@@ -28,6 +38,12 @@ class RunRequest(BaseModel):
     strict: bool = False
     use_judge: bool = True
     write_cover_letter: bool = True
+    # Mirrors RunOptions. Bounded here as well as there because this one arrives
+    # from a browser, and `Literal`/`Field` is the cheapest place to refuse a
+    # value that could never be right.
+    max_pages: int = Field(default=1, ge=1, le=2)
+    layout: Literal["auto", "student", "experienced"] = "auto"
+    summary: bool = False
 
 
 class RunCreated(BaseModel):
@@ -108,12 +124,12 @@ class BulletView(BaseModel):
 
 
 class EntryView(BaseModel):
-    """A role or a project, flattened into something renderable."""
+    """Any bullet-carrying entry, flattened into something renderable."""
 
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    kind: Literal["experience", "project"]
+    kind: Literal["experience", "project", "leadership", "publication"]
     heading: str
     subheading: str
     tech: list[str] = Field(default_factory=list)
@@ -228,7 +244,7 @@ class CreateEntryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile: str
-    role: Literal["experience", "project"]
+    role: Literal["experience", "project", "leadership", "publication"]
     name: str = Field(min_length=1, max_length=200)
 
 
@@ -363,7 +379,7 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
                 id=role.id,
                 kind="experience",
                 heading=f"{role.title}, {role.org}",
-                subheading=f"{format_date_range(role.start, role.end)} · {role.location}",
+                subheading=f"{_dates(role.start, role.end)} · {role.location}",
                 tech=list(role.tech),
                 bullets=[_bullet_view(b) for b in role.bullets],
             )
@@ -377,11 +393,36 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
                 heading=project.name,
                 subheading=" · ".join(
                     part
-                    for part in (format_date_range(project.start, project.end), project.role)
+                    for part in (_dates(project.start, project.end), project.role)
                     if part
                 ),
                 tech=list(project.tech),
                 bullets=[_bullet_view(b) for b in project.bullets],
+            )
+        )
+
+    for role in profile.leadership:
+        entries.append(
+            EntryView(
+                id=role.id,
+                kind="leadership",
+                heading=f"{role.title}, {role.org}",
+                subheading=f"{_dates(role.start, role.end)} · {role.location}",
+                tech=list(role.tech),
+                bullets=[_bullet_view(b) for b in role.bullets],
+            )
+        )
+
+    for paper in profile.publications:
+        entries.append(
+            EntryView(
+                id=paper.id,
+                kind="publication",
+                heading=paper.title,
+                # One date, not a range -- it was published, it did not run.
+                subheading=f"{paper.venue} · {format_year_month(paper.start)}",
+                tech=list(paper.tech),
+                bullets=[_bullet_view(b) for b in paper.bullets],
             )
         )
 
