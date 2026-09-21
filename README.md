@@ -1,8 +1,8 @@
 # resume-agent
 
-A LangGraph agent that takes a job description and produces a truthful, one-page,
-ATS-clean LaTeX resume and a matching cover letter, grounded entirely in a
-structured career knowledge base.
+A LangGraph agent that takes a job description and produces a truthful,
+ATS-clean LaTeX resume and a matching cover letter — one page by default —
+grounded entirely in a structured career knowledge base.
 
 Design: [`RESUME_AGENT_SPEC.md`](RESUME_AGENT_SPEC.md).
 Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
@@ -46,8 +46,19 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   build when the mean judge score drops more than 0.3.
 
 * **M9** — a FastAPI app with SSE streaming of node events, and a one-file
-  frontend: paste a posting, watch the graph tick past node by node, read
-  the fit report and the PDF without leaving the page. **There is no web UI** — that is M9.
+  frontend: paste a posting, watch the run progress, read the fit report and
+  the PDF without leaving the page.
+
+**Since M9**, three things the spec did not anticipate:
+
+* **Chat** — ask what is weak about your own career file, or just describe what
+  you did and let it file the details. Nothing is written until you accept it,
+  and anything it wrote that you did not say arrives flagged.
+* **Layouts that follow the evidence** — leadership roles, publications and
+  awards are first-class sections, and whether education leads the page is
+  computed from months of non-internship work rather than chosen.
+* **A default view built for someone who has not read this file** — the
+  machinery moved behind one `Advanced` switch.
 
 ---
 
@@ -57,20 +68,38 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 uv run resume-agent serve
 ```
 
-Then open <http://127.0.0.1:8000>. Paste a posting, press **Tailor my resume**
-(or `Ctrl`/`Cmd`+`Enter` from the textarea), and watch the graph work.
+Then open <http://127.0.0.1:8000>. Paste a posting, press **Make my resume**
+(or `Ctrl`/`Cmd`+`Enter` from the textarea).
 
-All sixteen nodes are drawn as a pipeline rail, grouped into the five phases
-they belong to — read, write, typeset, letter, close — and each one lights up as
-its events arrive over SSE. Model calls are shown too, so a twenty-second
-tailoring call doesn't look like a hang. When the run ends the rail says how
-many stages actually ran: the repair stages (`fix_latex`, `shrink_budget`,
-`note_overfull`) only fire when they are needed, and a tick that never lit is
-information, not a gap.
+By default the page shows five named steps — reading the posting, writing your
+lines, typesetting the page, cover letter, finishing — advancing as events
+arrive over SSE. Model calls are included, so a twenty-second tailoring call
+doesn't look like a hang. There is no percentage, deliberately: the layout loop
+can re-run selection two or three times, so the work has no fixed length and a
+bar would either stall or run backwards.
 
-Results lead with what is missing — uncovered must-haves and bullets dropped for
-failing grounding — before the bullets that made it, because that is the
-actionable half. The tracker appears underneath once you have sent anything.
+Results lead with what is missing — uncovered must-haves and achievements
+dropped for failing grounding — before the ones that made it, because that is
+the actionable half. The tracker appears underneath once you have sent anything.
+
+### The Advanced switch
+
+The default view is built for someone who has not read this file. Three run
+options, plain words, and none of the machinery. One checkbox in the header
+turns the rest back on, and it is remembered:
+
+| Off (default) | On |
+|---|---|
+| Five named steps | All 17 graph nodes as a pipeline rail, plus the raw run log |
+| Cover letter, summary, page limit | …and `strict`, `grounding judge`, `layout` |
+| Achievements | …with their ids (`exp_acme.b1`) |
+| — | The raw-file editor, and the Guide's file-format section |
+
+It is one CSS rule against one attribute on `<body>`, so nothing is refetched
+or re-rendered when you flip it. The rule *hides* rather than shows: scoped to
+`body:not([data-advanced])`, which both wins on specificity against
+`label.check { display: flex }` and lets every element keep its own display type
+when the switch is on.
 
 The page reports missing credentials or a missing LaTeX compiler **before** you
 press the button rather than after you've waited, and says how to fix each one.
@@ -101,23 +130,28 @@ Everything the agent is allowed to say about you lives in a folder called
 **`profile/`** at the root of this repository. It does not exist until you make
 it, and it is gitignored — your real career data is never committed.
 
-```bash
-cp -r profile.example profile
-```
-
-Then edit every file to be about you. `profile.example/` is the public fixture
-the tests load; leave it in place.
+You do not have to create it by hand: the **My information** tab has a **New**
+button that asks for your name and gives you empty forms. `profile.example/` is
+the public fixture the tests load; leave it in place.
 
 ```
 profile/
 ├── identity.yaml          name, email, phone, location, links
-├── education.yaml         institutions, degrees, dates
+├── education.yaml         institutions, degrees, GPA, honours
 ├── skills.yaml            THE allow-list of technologies
 ├── certifications.yaml    optional
+├── awards.yaml            optional — placings, scholarships, honours
 ├── experience/            one YAML file per job
 ├── projects/              one YAML file per project
+├── leadership/            one per society role, committee, volunteer post
+├── publications/          one per paper, article or talk
 └── narratives/            markdown prose, feeds the cover letter
 ```
+
+`leadership/` and `publications/` hold **entries**, not bespoke records: they
+carry achievements, so they get bullet ids, the cross-file validators,
+retrieval, selection, the form editor and the chat for free. Their achievements
+compete for space against your jobs on exactly the same terms.
 
 Two files do more work than the rest. **`skills.yaml`** is an allow-list: if a
 tailored bullet names a technology that is not in it, the grounding gate rejects
@@ -125,13 +159,60 @@ the bullet. And each bullet's **`metrics`** dict is the complete set of numbers 
 rewrite of that bullet may contain — anything else is a fabrication and the
 bullet is dropped, loudly.
 
-The **Guide** tab in the web UI explains every field, and the **Profile** tab
+The **Guide** tab in the web UI explains every field, and **My information**
 shows exactly what loaded, so you can see whether a bullet you wrote is being
 read. A file with a mistake is listed there with its error rather than silently
 skipped.
 
-You can also skip the copy above entirely: if no `profile/` exists, the Profile
-tab offers a **Create my profile** button that scaffolds one from the example.
+A new profile starts empty by default. You can start from the worked example
+instead, but everything in it belongs to a fictional person, so it is a demo to
+read rather than a draft to edit.
+
+### What your resume looks like, and why it changes
+
+A fresh graduate's resume leads with education, carries the GPA and the
+honours, and gives room to society roles and publications — because that is the
+strongest evidence there is. Six years later the same person leads with work,
+and that society role is not worth the four lines it costs.
+
+You do not choose between those. **It is counted, not judged** (CLAUDE.md rule
+2): months of non-internship work, with overlapping roles counted once, and
+whether your studies have finished.
+
+| | |
+|---|---|
+| **student** — still studying, or no non-internship work | Summary · **Education** (GPA, honours, awards, certifications) · Experience · Projects · Leadership · Publications · Skills |
+| **early** — under two years | the same order |
+| **experienced** — two years or more | Summary · Experience · Projects · Skills · Publications · **Education** (one line) · Leadership |
+
+An internship prints under Experience like any other job. It just does not, on
+its own, move education off the top — which is the only question being asked.
+
+**The stage decides order, and nothing else.** Whether a section *appears* is
+the knapsack's decision: a section whose achievements all lost the line budget
+renders nothing at all. That is why an experienced profile's leadership section
+quietly disappears rather than being switched off, and why you never hit a
+jarring step when you outgrow the student layout.
+
+`--layout student|experienced` overrides the count for the minority it gets
+wrong — a career changer whose months are real but in another field, someone
+back from a research degree. `auto` is the default and is right for almost
+everyone.
+
+### Two pages, and the summary
+
+`--max-pages 2` is there for the profiles that genuinely need it: an academic
+record with publications, or a new graduate whose coursework and leadership are
+the evidence. One page stays the default and is what the selection is tuned
+for. The capacity of each is **measured by compiling**, not estimated — see
+`latex/layout.py`, where every constant carries the probe that produced it.
+
+`--summary` writes the opening paragraph. Off by default: it costs about four
+lines of a roughly thirty-line page, and those lines are only worth spending
+when it says something the achievements underneath do not. It is written from
+the achievements *selected for that resume* and checked against them, so a
+number or technology none of them supports gets the summary rewritten — and if
+that fails twice the resume ships without one.
 
 ### Editing from the browser
 
@@ -357,7 +438,9 @@ checked against the same knowledge base as the résumé and against the
 résumé's own bullets. `--no-cover-letter` skips it.
 
 `--no-judge` skips the paid grounding judge while keeping both free
-deterministic layers. `--strict` drops `confidence: claim` bullets.
+deterministic layers. `--strict` drops `confidence: claim` achievements.
+`--layout`, `--max-pages` and `--summary` are described under
+[What your resume looks like](#what-your-resume-looks-like-and-why-it-changes).
 
 ### Reviewing before you send
 
@@ -573,7 +656,10 @@ src/resume_agent/
   graph/nodes/verify.py   the fabrication gate, cheap layers first
   grounding/numbers.py    which numbers a rewrite may contain
   grounding/vocabulary.py which technologies a rewrite may name
-  latex/layout.py         line budget, measured by compiling six profile shapes
+  sections.py             career stage and section order -- counted, never judged
+  graph/nodes/summary.py  the opening summary, gated against the selected achievements
+  latex/layout.py         line budget, measured by compiling -- every constant
+                          carries the probe that produced it
   analyze.py / report.py  the analyze pipeline and its human-readable output
   graph/state.py          AgentState + RunOptions
   graph/build.py          every node, and EVERY edge (CLAUDE.md rule 6)
@@ -595,8 +681,9 @@ profile.example/narratives/  markdown source material for the letter
   latex/inspect.py        page count, overfull hboxes, first LaTeX error
   latex/metrics.py        CHARS_PER_LINE, measured not guessed
   templates/              jake_resume.tex.j2 (Jake's Resume, MIT, adapted)
-scripts/                  calibrate_chars_per_line.py
+scripts/                  calibrate_chars_per_line.py, calibrate_line_budget.py
 tests/                    escape fixtures, golden .tex, a real compile
+  fixtures/profile.student/  a fresh-graduate profile: leadership, publications, awards
 ```
 
 ---
