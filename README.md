@@ -135,7 +135,7 @@ tab offers a **Create my profile** button that scaffolds one from the example.
 
 ### Editing from the browser
 
-The Profile tab has two modes. *Browse* renders what loaded; **Edit files** gives
+The My information tab has two modes. *Browse* renders what loaded; **Edit files** gives
 you a form per file — labelled inputs, month pickers, repeatable blocks for
 achievements, and a technology picker that only offers skills you have recorded.
 You never see YAML, and narratives are a title and a prose box with no Markdown
@@ -200,7 +200,7 @@ Accepted items go through the same form layer as everything else, so they inheri
 the validation, the backup and the comment preservation.
 
 Point any command at it with `--profile profile`, or pick it from the dropdown
-on the Profile tab, which is remembered between visits.
+on the My information tab, which is remembered between visits.
 
 ### Model provider
 
