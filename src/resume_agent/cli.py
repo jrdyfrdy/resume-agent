@@ -684,6 +684,13 @@ def serve(
     host: Annotated[str, typer.Option("--host", help="Interface to bind.")] = "127.0.0.1",
     port: Annotated[int, typer.Option("--port", help="Port to listen on.")] = 8000,
     reload: Annotated[bool, typer.Option("--reload", help="Reload on code changes.")] = False,
+    allow_unauthenticated: Annotated[
+        bool,
+        typer.Option(
+            "--allow-unauthenticated",
+            help="Serve the no-sign-in local tool on a non-local address anyway.",
+        ),
+    ] = False,
 ) -> None:
     """Serve the web UI. Spec 8's M9.
 
@@ -694,6 +701,11 @@ def serve(
     the one that is safe to put on a public address.
     """
     import uvicorn
+
+    refusal = serving_refusal(host, allow_unauthenticated=allow_unauthenticated)
+    if refusal:
+        typer.secho(refusal, fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.USAGE)
 
     typer.secho(f"resume-agent UI: http://{host}:{port}", fg=typer.colors.CYAN, bold=True)
     if not has_credentials():
@@ -711,6 +723,38 @@ def serve(
         reload=reload,
         log_level="info",
     )
+
+
+def serving_refusal(host: str, *, allow_unauthenticated: bool = False) -> str | None:
+    """Why `serve` must not start as configured, or None.
+
+    Checked before the server starts rather than when the first request fails,
+    because on a host the only place anyone reads this is the deploy log.
+
+    The one that matters most: the hosted image binds 0.0.0.0, and it no longer
+    forces demo mode -- the mode is an environment variable. Forgetting that
+    variable must not quietly produce the local tool on a public address, with
+    no sign-in and every endpoint that edits a profile or spends the API key.
+    """
+    from resume_agent.accounts.auth import AuthSettings, ConfigurationError  # noqa: PLC0415
+    from resume_agent.api.app import resolve_mode  # noqa: PLC0415
+
+    try:
+        mode = resolve_mode()
+        if mode == "multiuser":
+            AuthSettings.from_env()
+    except ConfigurationError as exc:
+        return str(exc)
+
+    local_address = host in ("localhost", "::1") or host.startswith("127.")
+    if mode == "local" and not local_address and not allow_unauthenticated:
+        return (
+            f"Not serving on {host}: without sign-in, anyone who can reach it could "
+            "edit the profile and spend your API key. For a hosted site set "
+            "RESUME_AGENT_MULTIUSER=1 (accounts) or RESUME_AGENT_DEMO=1 (read-only "
+            "tour). To expose the local tool deliberately, pass --allow-unauthenticated."
+        )
+    return None
 
 
 # ===========================================================================

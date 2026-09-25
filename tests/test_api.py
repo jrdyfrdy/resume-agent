@@ -14,6 +14,7 @@ import asyncio
 import json
 import re
 import shutil
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -95,12 +96,20 @@ def _default_events() -> list[dict]:
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
+def client() -> Iterator[TestClient]:
+    """One event loop for the whole test, as under uvicorn.
+
+    Without the `with`, the test client runs every request on a loop of its own
+    and shuts it down afterwards -- cancelling any run the request started. A
+    run that had not quite finished by then left its event stream waiting on a
+    status that could never arrive, and the suite hung, sometimes.
+    """
+    with TestClient(create_app(graph_factory=lambda **_kw: FakeGraph())) as client:
+        yield client
 
 
 @pytest.fixture
-def writable_profile(tmp_path: Path, monkeypatch) -> tuple[TestClient, str, Path]:
+def writable_profile(tmp_path: Path, monkeypatch) -> Iterator[tuple[TestClient, str, Path]]:
     """A profile the API may write to, in a working directory of its own.
 
     `discover_profiles()` scans the current directory, so changing into a temp
@@ -111,8 +120,8 @@ def writable_profile(tmp_path: Path, monkeypatch) -> tuple[TestClient, str, Path
     directory = tmp_path / "profile"
     shutil.copytree(Path(__file__).resolve().parent.parent / "profile.example", directory)
     monkeypatch.chdir(tmp_path)
-    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph()))
-    return client, "profile", directory
+    with TestClient(create_app(graph_factory=lambda **_kw: FakeGraph())) as client:
+        yield client, "profile", directory
 
 
 def read_events(client: TestClient, run_id: str) -> list[dict]:
@@ -1070,13 +1079,12 @@ def test_the_summary_is_available_after_the_run(client: TestClient) -> None:
 def test_a_failing_run_reports_rather_than_hanging() -> None:
     """A page left spinning forever is the worst outcome; it must be told."""
     app = create_app(graph_factory=lambda **_kw: FakeGraph(boom="tectonic exploded"))
-    client = TestClient(app)
-
-    run_id = client.post("/api/runs", json={"jd": "Backend engineer."}).json()["run_id"]
-    events = read_events(client, run_id)
+    with TestClient(app) as client:
+        run_id = client.post("/api/runs", json={"jd": "Backend engineer."}).json()["run_id"]
+        events = read_events(client, run_id)
+        body = client.get(f"/api/runs/{run_id}").json()
 
     assert any(e["kind"] == "error" for e in events)
-    body = client.get(f"/api/runs/{run_id}").json()
     assert body["status"] == "failed"
     assert "tectonic exploded" in body["errors"][0]
 
@@ -1189,3 +1197,36 @@ def test_the_rail_matches_the_real_graph() -> None:
         f"missing from the rail: {GRAPH_NODES - on_the_rail}; "
         f"not real nodes: {on_the_rail - GRAPH_NODES}"
     )
+
+
+def test_a_run_whose_task_died_ends_its_stream() -> None:
+    """Found as an intermittent hang of the whole suite.
+
+    A run's task can end without recording how -- cancelled, when the event loop
+    it ran on shuts down. Cancellation is not an exception, so `_execute` never
+    marked the run failed, and the stream waited for a status that could no
+    longer arrive. Reproduced on purpose here: without `with`, the test client
+    closes the POST's event loop as soon as it returns, cancelling a run that
+    is still going.
+    """
+    import threading  # noqa: PLC0415
+
+    class Slow(FakeGraph):
+        async def astream_events(self, _state, _config=None, **_kw):
+            yield {"event": "on_chain_start", "name": "parse_jd", "data": {}}
+            await asyncio.sleep(60)
+
+    client = TestClient(create_app(graph_factory=lambda **_kw: Slow()))
+    run_id = client.post("/api/runs", json={"jd": "Backend engineer."}).json()["run_id"]
+
+    events: list[dict] = []
+    reader = threading.Thread(
+        target=lambda: events.extend(read_events(client, run_id)), daemon=True
+    )
+    reader.start()
+    reader.join(timeout=10)
+
+    assert not reader.is_alive(), "the stream is still waiting on a run that cannot finish"
+    assert events[-1]["kind"] == "error"
+    assert "stopped unexpectedly" in events[-1]["detail"]
+    assert client.get(f"/api/runs/{run_id}").json()["status"] == "failed"

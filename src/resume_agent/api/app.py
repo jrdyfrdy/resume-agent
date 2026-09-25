@@ -1059,4 +1059,15 @@ async def _sse(run: Run) -> AsyncIterator[str]:
             yield "event: end\ndata: {}\n\n"
             return
 
+        # The task is gone but never said how it ended -- cancelled, because
+        # the event loop it ran on was shut down under it. `_execute` records
+        # every *exception*, but cancellation is not one, so without this the
+        # stream would wait for a status that can no longer arrive, for ever.
+        if run.task is not None and run.task.done():
+            run.status = "failed"
+            stopped = NodeEvent(kind="error", name="failed", detail="the run stopped unexpectedly")
+            yield f"data: {stopped.model_dump_json()}\n\n"
+            yield "event: end\ndata: {}\n\n"
+            return
+
         await asyncio.sleep(POLL_INTERVAL_S)

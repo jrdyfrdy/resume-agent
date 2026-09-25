@@ -49,7 +49,7 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   frontend: paste a posting, watch the run progress, read the fit report and
   the PDF without leaving the page.
 
-**Since M9**, three things the spec did not anticipate:
+**Since M9**, four things the spec did not anticipate:
 
 * **Chat** — ask what is weak about your own career file, or just describe what
   you did and let it file the details. Nothing is written until you accept it,
@@ -59,6 +59,9 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   computed from months of non-internship work rather than chosen.
 * **A default view built for someone who has not read this file** — the
   machinery moved behind one `Advanced` switch.
+* **Accounts** — host it for friends: they sign in with Google, you approve
+  each one, and every career file is its owner's alone. See
+  [Hosting it](#hosting-it).
 
 ---
 
@@ -104,19 +107,135 @@ when the switch is on.
 The page reports missing credentials or a missing LaTeX compiler **before** you
 press the button rather than after you've waited, and says how to fix each one.
 It binds to localhost by default: the API has no authentication and starting a
-run spends money.
+run spends money. To put it online, see [Hosting it](#hosting-it).
 
 The frontend is one file with no build step, no framework and no network: no
 CDN, no webfonts, nothing fetched off the machine. Two tests hold that line.
 
-## Hosting a public demo
+## Hosting it
 
-`serve` binds to localhost because this app has **no authentication** and eight
-endpoints that write career data or spend an API key. That is fine on your own
-machine and unacceptable on a public URL.
+On your own machine `serve` has no sign-in, which is why it binds to localhost.
+To put it on the internet, pick one of two hosted modes:
 
-`RESUME_AGENT_DEMO=1` is what makes a public URL defensible. It removes every
-mutating route except `POST /api/runs`, so there is nothing to authenticate to:
+| | **Accounts** | **Demo** |
+|---|---|---|
+| Switched on by | `RESUME_AGENT_MULTIUSER=1`, plus the settings below | `RESUME_AGENT_DEMO=1` |
+| Who can use it | People you approve, after they sign in with Google | Anyone with the link |
+| Whose career file | Each person's own, kept in Postgres | The made-up example, read-only |
+| Limits | 5 resumes per person a day, 40 in total, one at a time | 3 per address an hour, 40 a day |
+
+Setting both is refused at startup. So is setting neither while listening on a
+public address: `serve --host 0.0.0.0` in local mode stops with a message
+rather than open a tool with no sign-in that edits profiles and spends your
+key. (`--allow-unauthenticated` exists for the rare time you mean it.)
+
+Either way the site needs a **persistent process**, not serverless. A run is a
+detached `asyncio` task that streams its progress over SSE for about a minute;
+on a function-per-request platform the task dies when the POST returns. Render,
+Railway, Fly and a plain VM are fine; Vercel and Lambda are not. The
+`Dockerfile` builds one image for both modes: tectonic, the embedding model
+baked in, and `profile.example` as the only profile. `.dockerignore` keeps your
+real `profile/` out of it.
+
+### Accounts: friends sign in, you let them in
+
+* **Sign in with Google.** Only addresses Google has verified are accepted,
+  which is what makes approving someone mean anything. There are no passwords
+  to store or reset.
+* **Everyone starts out waiting.** You let people in from the **People** tab,
+  which only you see, or from a terminal if the site itself is what is broken:
+
+  ```bash
+  # with DATABASE_URL set to the same connection string the site uses
+  resume-agent users list
+  resume-agent users approve friend@gmail.com
+  resume-agent users reject friend@gmail.com   # also takes access back
+  ```
+
+  Taking access away works on that person's next click.
+  `RESUME_AGENT_ADMIN_EMAIL` is you: let straight in, and the only account
+  that sees People.
+* **Each career file is its owner's alone.** Every route is scoped to the
+  signed-in account, and someone else's file, run, PDF or chat is simply not
+  found. Each file is stored under the account's id, so two people's search
+  indexes cannot mix either. `tests/test_accounts_isolation.py` holds that line:
+  two users, every route, and the tricks.
+* **Nothing is lost by accident.** Every save is kept (**Earlier versions** in
+  the editor brings one back), every resume's PDF is kept (**History →
+  Download**), and **Delete my account** removes all of it.
+* **Runs spend your key.** The daily limits are counted from the database, so a
+  restart does not reset them. One resume is made at a time, because the free
+  instance has 512 MB. A second one waits its turn and says so.
+
+| Variable | |
+|---|---|
+| `RESUME_AGENT_MULTIUSER` | `1` |
+| `DATABASE_URL` | The Postgres connection string (Neon, below). Tables are created on first start. |
+| `SESSION_SECRET` | 32+ random characters. Signs the sign-in cookie. |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | From Google Cloud, below. |
+| `RESUME_AGENT_ADMIN_EMAIL` | Your Google address. |
+| `RESUME_AGENT_PUBLIC_URL` | The site's own address, e.g. `https://resume-agent-x1y2.onrender.com`. |
+| `DEEPSEEK_API_KEY` *or* `ANTHROPIC_API_KEY` | The key runs are paid with. See [Model provider](#model-provider). |
+| `RESUME_AGENT_SIGNUP_WEBHOOK` | *Optional.* A Discord or Slack webhook URL, pinged when someone new is waiting. |
+| `RESUME_AGENT_RUNS_PER_USER_PER_DAY`, `RESUME_AGENT_RUNS_PER_DAY`, `RESUME_AGENT_CONCURRENT_RUNS` | *Optional.* 5, 40 and 1. |
+
+### Deploying accounts, step by step
+
+All four services have free tiers. Google's and Neon's menus get renamed from
+time to time; if one below does not match, what you are looking for is named in
+**bold**.
+
+**1. A database, on Neon.**
+
+1. Sign up at [neon.tech](https://neon.tech) and create a project. Pick the
+   region nearest the one you will pick on Render.
+2. **Connect** → copy the **connection string**. It begins `postgresql://` and
+   ends with `sslmode=require`. That is `DATABASE_URL`.
+
+**2. The site, on Render.** First, because Google needs to know its address.
+
+1. [render.com](https://render.com) → **New → Web Service** → connect GitHub →
+   this repository → language **Docker** → instance type **Free**.
+2. Note the address it will have: `https://<name>.onrender.com`. That is
+   `RESUME_AGENT_PUBLIC_URL`.
+3. Under **Environment**, add the variables in the table above. Make the
+   session secret with
+   `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
+   The Google pair can wait for step 3. Until every setting is there, the
+   deploy log names what is missing and the site does not start.
+
+**3. Sign-in, on Google Cloud.**
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create a project.
+2. **Google Auth Platform** (formerly the **OAuth consent screen**) → **Get
+   started**: an app name, your address as the support contact, audience
+   **External**.
+3. **Clients → Create client** → **Web application**. Under **Authorized
+   redirect URIs** add `https://<name>.onrender.com/auth/callback` exactly.
+   Copy the client ID and secret into Render.
+4. **Audience → Publish app.** While the app is in *Testing*, only addresses
+   you list there can sign in at all. Once it is published, anyone with a
+   Google account can reach the waiting list, and People decides who gets
+   further. The app asks for nothing beyond name and email, which Google does
+   not review.
+
+**4. Open the site and sign in** with the `RESUME_AGENT_ADMIN_EMAIL` account.
+You are let straight in, and the **People** tab appears. Send the link to a
+friend: when they sign in, they show up there as waiting.
+
+**When something is off:**
+
+* Google says `redirect_uri_mismatch`: the URI in step 3.3 must be exactly
+  `RESUME_AGENT_PUBLIC_URL` + `/auth/callback`: `https`, the same host, and
+  no trailing slash.
+* The first visit after a quiet spell takes most of a minute. Free Render
+  sleeps after 15 idle minutes and Neon suspends too, so both wake on that
+  click. Warn your friends, or pay Render $7/month to keep it awake.
+
+### Demo: a read-only tour
+
+`RESUME_AGENT_DEMO=1` removes every mutating route except `POST /api/runs`, so
+there is nothing to authenticate to:
 
 ```
 $ RESUME_AGENT_DEMO=1 resume-agent serve
@@ -130,8 +249,6 @@ reach, and nothing to get past. The allow-list is in `api/app.py`
 (`DEMO_ALLOWED_MUTATIONS`) and a test asserts that exactly one mutating route
 survives, so an endpoint added later is excluded by default.
 
-### It still spends your money
-
 The one surviving endpoint is the expensive one. `api/limits.py` caps it two
 ways, and they defend different things:
 
@@ -140,28 +257,12 @@ ways, and they defend different things:
 | `RESUME_AGENT_DEMO_RUNS_PER_IP` | 3 per hour | Stops one person hammering it. Not a control — addresses are cheap and the header is spoofable. |
 | `RESUME_AGENT_DEMO_RUNS_PER_DAY` | 40 | Protects the account. One global counter, no notion of who, and no way to evade it by changing address. |
 
-Use a cheap provider. A run is roughly $0.50–1.00 on Claude and far less on
-DeepSeek, so 40 runs a day is either a rounding error or a bad week depending
-on which key you start the server with.
+Deploy it the same way as accounts, step 2 alone, with `RESUME_AGENT_DEMO=1`
+and a provider key as the only settings.
 
-### Deploying
-
-The `Dockerfile` builds a demo image: it installs tectonic, bakes in the ONNX
-embedding model, copies `profile.example` as the only profile, and sets
-`RESUME_AGENT_DEMO=1`. `.dockerignore` keeps your real `profile/` out of the
-build context.
-
-It needs a **persistent process**, not serverless. A run starts a detached
-`asyncio` task, keeps its state in an in-process dict, and streams from it over
-SSE for about a minute — on a function-per-request platform the background task
-dies when the POST returns and the SSE call lands in a different process with
-an empty registry. Render, Railway, Fly and a plain VM are all fine; Vercel and
-Lambda are not.
-
-```bash
-# Render: New → Web Service → point at this repo → Docker.
-# Set DEEPSEEK_API_KEY (or ANTHROPIC_API_KEY) in the dashboard, nowhere else.
-```
+Use a cheap provider for either mode. A run is roughly $0.50–1.00 on Claude and
+far less on DeepSeek, so 40 runs a day is either a rounding error or a bad week
+depending on which key the server has.
 
 ## Setup
 
@@ -723,6 +824,12 @@ src/resume_agent/
   graph/nodes/review.py   the interrupt() gate and the revision cap
   tracker/                the application table; outcomes you fill in by hand
   api/                    FastAPI app, SSE, and a single static page
+  api/limits.py           the demo's and the accounts' run limits -- counted, never judged
+  accounts/db.py          users, career files and their versions, runs and PDFs;
+                          one set of queries for SQLite and Postgres
+  accounts/workspace.py   a user's file as a folder named after their id, rebuilt
+                          per request and saved back by diff -- `kb/` is unchanged
+  accounts/auth.py        Google sign-in, the allow-list gate, the owner's endpoints
 evals/                    the eval set, its checks, the judge, the gate
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned

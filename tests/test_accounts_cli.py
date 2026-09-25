@@ -60,3 +60,47 @@ def test_it_needs_only_the_database_url(monkeypatch) -> None:
 
     assert result.exit_code == ExitCode.USAGE
     assert "DATABASE_URL" in result.output
+
+
+# ===========================================================================
+# `serve` will not put the no-sign-in tool on a public address
+# ===========================================================================
+
+MODE_VARS = ("RESUME_AGENT_DEMO", "RESUME_AGENT_MULTIUSER")
+
+
+def test_serve_refuses_a_public_address_without_sign_in(monkeypatch) -> None:
+    """The hosted image binds 0.0.0.0 and no longer forces demo mode, so a
+    forgotten environment variable must stop the deploy, not open the tool."""
+    for name in MODE_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+    result = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "RESUME_AGENT_MULTIUSER=1" in result.output
+
+
+def test_serve_names_what_multi_user_mode_is_missing(monkeypatch) -> None:
+    monkeypatch.delenv("RESUME_AGENT_DEMO", raising=False)
+    monkeypatch.setenv("RESUME_AGENT_MULTIUSER", "1")
+    for name in ("DATABASE_URL", "SESSION_SECRET", "GOOGLE_CLIENT_ID"):
+        monkeypatch.delenv(name, raising=False)
+
+    result = runner.invoke(app, ["serve", "--host", "0.0.0.0"])
+
+    assert result.exit_code == ExitCode.USAGE
+    assert "SESSION_SECRET" in result.output
+
+
+def test_what_serve_allows(monkeypatch) -> None:
+    from resume_agent.cli import serving_refusal
+
+    for name in MODE_VARS:
+        monkeypatch.delenv(name, raising=False)
+    assert serving_refusal("127.0.0.1") is None, "the local tool on your own machine"
+    assert serving_refusal("localhost") is None
+    assert serving_refusal("0.0.0.0", allow_unauthenticated=True) is None, "on purpose"
+
+    monkeypatch.setenv("RESUME_AGENT_DEMO", "1")
+    assert serving_refusal("0.0.0.0") is None, "the demo has nothing to sign in to"

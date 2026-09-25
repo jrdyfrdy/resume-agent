@@ -1,5 +1,11 @@
-# The public demo image. Not how you should run this locally -- `uv run
+# The hosted image. Not how you should run this locally -- `uv run
 # resume-agent serve` is, and it needs none of this.
+#
+# Which site it serves is set on the host, not here: RESUME_AGENT_MULTIUSER=1
+# for accounts (friends sign in, you approve them) or RESUME_AGENT_DEMO=1 for
+# the read-only tour. With neither, `serve` refuses to start on a public
+# address, so a forgotten variable stops the deploy instead of exposing the
+# no-sign-in local tool.
 #
 # Two things make this bigger than a plain Python image, and both are load
 # bearing: tectonic, because a resume that never compiles is not a demo, and
@@ -12,7 +18,6 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
-    RESUME_AGENT_DEMO=1 \
     RESUME_AGENT_MODEL_CACHE=/opt/models
 
 # tectonic pulls fonts and packages on first compile; letting it do that during
@@ -32,9 +37,10 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 RUN uv sync --frozen --no-dev
 
-# The demo serves this and nothing else: it is the only profile in the working
-# directory, so `discover_profiles()` cannot offer anything private even if one
-# were somehow mounted later.
+# The only profile in the image. The demo serves it; with accounts it is what
+# "start from the worked example" copies -- and the only thing that may be
+# copied, whatever else is in the working directory. `.dockerignore` keeps your
+# real `profile/` out of the build.
 COPY profile.example ./profile.example
 
 # Warm both caches at build time, so a cold start is a cold start and not a
@@ -44,7 +50,7 @@ RUN uv run resume-agent index --profile profile.example || true
 RUN uv run resume-agent build --profile profile.example --out /tmp/warm || true
 
 EXPOSE 8000
-# Render supplies $PORT. Binding 0.0.0.0 is safe *here specifically* because
-# RESUME_AGENT_DEMO=1 removes every route that writes career data, and the one
-# mutating route left is rate limited.
+# Render supplies $PORT. Binding 0.0.0.0 is safe only in the two hosted modes,
+# and `serve` checks: accounts put every route behind sign-in and approval, the
+# demo removes every route that writes. Anything else is refused at startup.
 CMD ["sh", "-c", "uv run resume-agent serve --host 0.0.0.0 --port ${PORT:-8000}"]

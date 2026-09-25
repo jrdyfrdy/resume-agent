@@ -153,7 +153,12 @@ class AccountsDB:
         import psycopg  # noqa: PLC0415 - only the deployed mode needs it
         from psycopg.rows import dict_row  # noqa: PLC0415
 
-        return psycopg.connect(self.url, row_factory=dict_row)
+        # `prepare_threshold=None`: psycopg otherwise turns a query it has run
+        # five times into a server-side prepared statement, and behind a
+        # transaction-mode pooler -- Neon's `-pooler` connection string is
+        # PgBouncer -- the next query can land on a connection that never saw
+        # it. At a dozen queries a request, preparing saves nothing worth that.
+        return psycopg.connect(self.url, row_factory=dict_row, prepare_threshold=None)
 
     def _live(self) -> Any:
         """A connection that is known to work.
