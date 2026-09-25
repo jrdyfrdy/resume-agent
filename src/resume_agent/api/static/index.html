@@ -752,6 +752,9 @@
   #gate form, #gate > button { margin-top: 28px; }
   #gate .cta { margin-left: 0; }
   #gate .note { margin: 0 0 24px; font-size: 14px; }
+  #gate > button + button { margin-left: 8px; }
+  #gate .gate-links { margin: 18px 0 0; font-size: 13.5px; }
+  #gate a, footer a { color: var(--accent); }
   body[data-gate] header .facts,
   body[data-gate] header .advanced-switch,
   body[data-gate] header .ready,
@@ -1306,7 +1309,7 @@
 
   <footer>
     <span class="local-only">Everything stays on this computer, except the job ad and your career file, which are sent to the AI provider.</span>
-    <span class="account-only">Your career file is saved to your account. It and the job ad go to the AI provider only when you make a resume.</span>
+    <span class="account-only">Your career file is saved to your account. It and the job ad go to the AI provider only when you make a resume. <a href="/privacy">Privacy</a></span>
     <span>Jake's Resume template<span class="adv-only"> · compiled with tectonic</span></span>
   </footer>
 
@@ -2960,7 +2963,10 @@ const SIGNIN_NOTES = {
 function showGate(kind) {
   document.body.dataset.gate = kind;
   const who = account ? `Signed in as <b>${esc(account.email)}</b>. ` : "";
-  const out = `<button type="button" class="ghost" id="gate-sign-out">Sign out</button>`;
+  // Someone waiting has stored nothing but their name and email, and can still
+  // take those back -- the privacy page promises it.
+  const out = `<button type="button" class="ghost" id="gate-sign-out">Sign out</button>` +
+    `<button type="button" class="btn-danger" id="gate-delete">Delete my account</button>`;
   const params = new URLSearchParams(location.search);
   const note = SIGNIN_NOTES[params.get("signin")];
   // Said once. A reload of the same address should not repeat it.
@@ -2975,7 +2981,8 @@ function showGate(kind) {
         has been approved.</p>
       <form action="/auth/login" method="get">
         <button type="submit" class="cta">Sign in with Google</button>
-      </form>`,
+      </form>
+      <p class="gate-links"><a href="/privacy">How your details are handled</a></p>`,
     pending: `
       <h1>You're on the list.</h1>
       <p class="lede">${who}Accounts are approved by hand, and yours is waiting. Check back
@@ -2991,6 +2998,7 @@ function showGate(kind) {
   }[kind];
   $("gate").classList.remove("hidden");
   $("gate-sign-out")?.addEventListener("click", signOut);
+  $("gate-delete")?.addEventListener("click", deleteAccount);
 }
 
 async function signOut() {

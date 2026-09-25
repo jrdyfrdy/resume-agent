@@ -213,7 +213,16 @@ time to time; if one below does not match, what you are looking for is named in
 3. **Clients → Create client** → **Web application**. Under **Authorized
    redirect URIs** add `https://<name>.onrender.com/auth/callback` exactly.
    Copy the client ID and secret into Render.
-4. **Audience → Publish app.** While the app is in *Testing*, only addresses
+4. **Branding**, which has to be complete before the app can be published:
+   * **App home page:** `https://<name>.onrender.com`
+   * **Privacy policy:** `https://<name>.onrender.com/privacy`. The site
+     serves one in multi-user mode, saying what is kept, who can see it,
+     where it goes (naming the configured AI provider) and how to delete it.
+   * **Authorized domains:** `<name>.onrender.com`, the whole subdomain.
+     `onrender.com` is a public suffix, so Google refuses it on its own.
+   * **Logo:** leave it empty. Uploading one sends the app to Google for review.
+   * **Terms of service:** optional; leave it empty.
+5. **Audience → Publish app.** While the app is in *Testing*, only addresses
    you list there can sign in at all. Once it is published, anyone with a
    Google account can reach the waiting list, and People decides who gets
    further. The app asks for nothing beyond name and email, which Google does
@@ -225,7 +234,7 @@ friend: when they sign in, they show up there as waiting.
 
 **When something is off:**
 
-* Google says `redirect_uri_mismatch`: the URI in step 3.3 must be exactly
+* Google says `redirect_uri_mismatch`: the redirect URI in step 3.3 must be exactly
   `RESUME_AGENT_PUBLIC_URL` + `/auth/callback`: `https`, the same host, and
   no trailing slash.
 * The first visit after a quiet spell takes most of a minute. Free Render
@@ -830,6 +839,7 @@ src/resume_agent/
   accounts/workspace.py   a user's file as a folder named after their id, rebuilt
                           per request and saved back by diff -- `kb/` is unchanged
   accounts/auth.py        Google sign-in, the allow-list gate, the owner's endpoints
+  accounts/privacy.html   the privacy page -- every sentence a claim about the code
 evals/                    the eval set, its checks, the judge, the gate
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned

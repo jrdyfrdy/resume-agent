@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · resume-agent</title>
+<meta name="color-scheme" content="light dark">
+<!--
+  Multi-user mode only, served at /privacy without signing in: Google asks for
+  a privacy policy before an app may be published, and the people trusting this
+  site with their career history deserve a straight answer anyway.
+
+  Every sentence here is a claim about what the code does. Change the code,
+  change this page. The two markers are filled in by `accounts/auth.py`:
+  which AI provider is configured, and whether sign-ups notify the owner.
+-->
+<style>
+  :root {
+    --press: #171613; --paper: #f7f3ea; --rule: #e0d7c5;
+    --ink: #24221d; --ink-2: #5d574c; --accent: #b3441f;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Charter, Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --press: #0b0b0a; --paper: #1b1a17; --rule: #36332c;
+      --ink: #ece7db; --ink-2: #a8a092; --accent: #e3764c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--press); color: var(--ink); font: 15px/1.65 var(--sans); }
+  .sheet {
+    max-width: 760px; margin: 22px auto; padding: 44px 40px 36px;
+    background: var(--paper); border-radius: 14px;
+  }
+  @media (max-width: 720px) { .sheet { margin: 0; border-radius: 0; padding: 32px 16px; } }
+  .wordmark { font: 600 14px/1 ui-monospace, Consolas, monospace; color: var(--ink); text-decoration: none; }
+  h1 { font: 400 clamp(26px, 3.6vw, 36px)/1.15 var(--serif); letter-spacing: -.015em; margin: 26px 0 12px; }
+  h2 { font: 600 14px/1.3 var(--sans); color: var(--ink-2); margin: 30px 0 8px; }
+  p, li { max-width: 64ch; }
+  p { margin: 0 0 12px; }
+  ul { margin: 0 0 12px; padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  a { color: var(--accent); }
+  .lede { font-size: 16px; color: var(--ink-2); }
+  footer { margin-top: 34px; padding-top: 14px; border-top: 1px solid var(--rule);
+           font-size: 13px; color: var(--ink-2); }
+</style>
+</head>
+<body>
+<div class="sheet">
+  <a class="wordmark" href="/">resume-agent</a>
+
+  <h1>How your details are handled</h1>
+  <p class="lede">This site builds resumes from a career file you write. This page covers
+    everything it keeps, who can see it, where it goes, and how to remove it.</p>
+
+  <h2>What is kept</h2>
+  <ul>
+    <li><b>From Google, when you sign in:</b> your name, your email address, and Google's
+      id for your account. The site asks Google for your basic profile and email address,
+      and nothing else.</li>
+    <li><b>What you write:</b> your career file (jobs, projects, achievements, skills and
+      anything else you add) and every earlier version of each part, so a mistake can
+      be undone.</li>
+    <li><b>What you make:</b> for each resume, the company, the job title, how well you
+      matched it, and the PDF, so you can download it again.</li>
+    <li><b>Chat conversations</b> are held only in the server's memory, and disappear
+      whenever it restarts.</li>
+  </ul>
+
+  <h2>Who can see it</h2>
+  <ul>
+    <li><b>Nobody else who signs in.</b> Every page, file and download is tied to your
+      account, and asking for someone else's finds nothing.</li>
+    <li><b>The person who runs this site.</b> They see your name, email address and when
+      you signed up, in order to let you in. And as with any website, they could read
+      what is stored in its database.</li>
+  </ul>
+
+  <h2>Where it goes</h2>
+  <ul>
+    <li><b>To the AI provider, __PROVIDER__.</b> When you make a resume or send a chat
+      message, the job ad and the parts of your career file that task needs are sent to
+      it, because that is what does the writing. Its own privacy policy covers what it
+      receives.</li>
+    <li><b>To the services the site runs on:</b> a web host and a database host, which
+      store and serve it on the site's behalf.</li>
+    __SIGNUP_NOTICE__
+    <li><b>Nowhere else.</b> No analytics, no advertising and no tracking. The pages
+      load nothing from any other website, and matching your achievements to a job ad
+      happens on the server itself.</li>
+  </ul>
+
+  <h2>Cookies</h2>
+  <p>One cookie keeps you signed in, for up to two weeks. Your browser also remembers a
+    couple of display settings, such as the Advanced switch. There is nothing else.</p>
+
+  <h2>Removing it</h2>
+  <ul>
+    <li><b>Delete my account</b>, in the menu under your email address, removes your
+      account, your career file with every earlier version, and every resume you made. It
+      happens at once and cannot be undone. If you are still waiting to be let in, the
+      waiting page has the same button.</li>
+    <li>Two copies outlast that briefly. Answers cached while your resumes were being made
+      stay on the server's temporary disk until it next restarts, which happens at every
+      update and after a quiet spell. And the database host keeps a short rolling history
+      for recovery, after which the data is gone for good.</li>
+  </ul>
+
+  <h2>Questions</h2>
+  <p>Ask the person who shared this site with you.</p>
+
+  <footer>Last updated 25 September 2026. <a href="/">Back to the site</a></footer>
+</div>
+</body>
+</html>

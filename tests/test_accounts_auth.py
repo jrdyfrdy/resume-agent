@@ -428,3 +428,58 @@ def test_every_change_the_page_sends_is_json() -> None:
     assert len(mutating) >= 8, f"found only {len(mutating)}; is the pattern still right?"
     for url, options in mutating:
         assert '"Content-Type": "application/json"' in options, f"{url.strip()} is not sent as JSON"
+
+
+# ===========================================================================
+# The privacy page
+# ===========================================================================
+
+
+def _app_with(tmp_path: Path, google: FakeGoogle, **settings):
+    db = AccountsDB(f"sqlite:///{tmp_path / 'p.db'}")
+    db.create_schema()
+    multi = MultiUser(
+        db=db, workspaces=Workspaces(db, tmp_path / "ws"), google_identity=google,
+        settings=AuthSettings(session_secret="s" * 48, admin_email=OWNER, **settings),
+    )
+    return create_app(graph_factory=lambda **_kw: NoGraph(), mode="multiuser", multiuser=multi)
+
+
+def test_the_privacy_page_is_public_and_says_where_data_goes(
+    tmp_path, google, monkeypatch
+) -> None:
+    """Google links to it from the consent screen, before anyone has signed in,
+    so it cannot be behind the gate. And it names the provider that actually
+    receives people's career data, not a placeholder."""
+    monkeypatch.setenv("RESUME_AGENT_PROVIDER", "deepseek")
+    client = TestClient(_app_with(tmp_path, google))
+
+    response = client.get("/privacy")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    page = response.text
+    assert "To the AI provider, DeepSeek." in page
+    assert "Delete my account" in page
+    assert "__" not in page, "a placeholder was left unfilled"
+    assert "chat service" not in page, "no sign-up message is sent without a webhook"
+    # Like the app, it loads nothing from anywhere else.
+    assert not re.findall(r'(?:src|href)="(?:https?:)?//', page)
+
+
+def test_the_privacy_page_mentions_the_signup_message_only_when_it_is_sent(
+    tmp_path, google
+) -> None:
+    client = TestClient(_app_with(tmp_path, google, signup_webhook="https://hooks.example.com/x"))
+
+    assert "your name and email address, through the chat service" in client.get(
+        "/privacy").text
+
+
+def test_someone_still_waiting_can_delete_their_account(app, google, multi) -> None:
+    """The privacy page promises it, and the waiting page offers the button."""
+    client = sign_in(app, google, "alex@example.com")
+    assert client.get("/api/me").json()["status"] == "pending"
+
+    assert client.request("DELETE", "/api/me", json={}).status_code == 200
+    assert multi.db.user_by_email("alex@example.com") is None

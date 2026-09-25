@@ -41,7 +41,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from resume_agent.accounts.db import AccountsDB, User
 from resume_agent.accounts.workspace import Workspaces
@@ -65,8 +65,10 @@ GOOGLE_DISCOVERY_URL = "https://accounts.google.com/.well-known/openid-configura
 # A signing key shorter than this is guessable enough to forge a session with.
 MIN_SECRET_LENGTH = 32
 
-# Anyone may reach these.
-PUBLIC_PATHS = frozenset({"/", "/auth/login", "/auth/callback", "/favicon.ico"})
+# Anyone may reach these. `/privacy` because Google links to it from its
+# consent screen, and someone deciding whether to sign in should be able to
+# read it first.
+PUBLIC_PATHS = frozenset({"/", "/auth/login", "/auth/callback", "/favicon.ico", "/privacy"})
 
 # These need a session but not approval: a pending user has to be able to ask
 # who they are (so the page can say "you're on the list"), sign out, and take
@@ -236,6 +238,11 @@ def install(app: FastAPI, multi: MultiUser) -> None:
         max_age=60 * 60 * 24 * 14,  # a fortnight; approval is re-checked each request anyway
     )
     identity = multi.google_identity or _google_identity(multi)
+    privacy = privacy_page(multi)
+
+    @app.get("/privacy", response_class=HTMLResponse)
+    async def privacy_policy() -> str:
+        return privacy
 
     @app.get("/auth/login")
     async def auth_login(request: Request):
@@ -370,6 +377,39 @@ def _google_identity(multi: MultiUser) -> GoogleIdentity:
         return dict(token.get("userinfo") or {})
 
     return exchange
+
+
+# How the privacy page names each provider. The page says where people's career
+# data is sent, so it names the company rather than the setting.
+PROVIDER_NAMES = {
+    "anthropic": "Anthropic (Claude)",
+    "deepseek": "DeepSeek",
+    "openrouter": "OpenRouter",
+}
+
+
+def privacy_page(multi: MultiUser) -> str:
+    """`privacy.html` with the two facts that depend on configuration filled in.
+
+    Built once at startup, like the app's own page. The provider and the webhook
+    are environment variables, so they cannot change while the process runs.
+    """
+    from resume_agent.llm import ProviderConfigError, resolve_provider  # noqa: PLC0415
+
+    fallback = "the one this site is set up with"
+    try:
+        provider = PROVIDER_NAMES.get(resolve_provider().name, fallback)
+    except ProviderConfigError:
+        provider = fallback
+    notice = (
+        "<li><b>To the owner, when you first sign in:</b> a message with your name and "
+        "email address, through the chat service they chose, so they know someone is "
+        "waiting.</li>"
+        if multi.settings.signup_webhook
+        else ""
+    )
+    page = Path(__file__).with_name("privacy.html").read_text(encoding="utf-8")
+    return page.replace("__PROVIDER__", provider).replace("__SIGNUP_NOTICE__", notice)
 
 
 def _notify_signup(webhook: str | None, user: User) -> None:
