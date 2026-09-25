@@ -32,6 +32,15 @@ dependencies = [
     "fastapi>=0.141.1",
     "uvicorn[standard]>=0.52.4",
     "langchain-openai>=1.6.2",
+    # Multi-user mode only (M10); local use never imports any of these.
+    # authlib: Google sign-in -- OAuth state, nonce, token exchange and ID-token
+    # signature checks. Hand-rolled OIDC is where authentication bugs come from.
+    "authlib>=1.3",
+    # Signed session cookies, required by Starlette's SessionMiddleware, which
+    # is also where authlib keeps OAuth state between redirect and callback.
+    "itsdangerous>=2.2",
+    # The Postgres driver for the hosted database (Neon).
+    "psycopg[binary]>=3.2",
 ]
 
 [project.scripts]
