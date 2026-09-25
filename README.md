@@ -109,6 +109,60 @@ run spends money.
 The frontend is one file with no build step, no framework and no network: no
 CDN, no webfonts, nothing fetched off the machine. Two tests hold that line.
 
+## Hosting a public demo
+
+`serve` binds to localhost because this app has **no authentication** and eight
+endpoints that write career data or spend an API key. That is fine on your own
+machine and unacceptable on a public URL.
+
+`RESUME_AGENT_DEMO=1` is what makes a public URL defensible. It removes every
+mutating route except `POST /api/runs`, so there is nothing to authenticate to:
+
+```
+$ RESUME_AGENT_DEMO=1 resume-agent serve
+PUT    /api/profile/file    → 405    DELETE /api/profile/file  → 405
+POST   /api/profile/create  → 404    POST   /api/chat          → 404
+POST   /api/runs            → 202, then 429 once you hit the limit
+```
+
+The routes are removed rather than made to return 403: there is no handler to
+reach, and nothing to get past. The allow-list is in `api/app.py`
+(`DEMO_ALLOWED_MUTATIONS`) and a test asserts that exactly one mutating route
+survives, so an endpoint added later is excluded by default.
+
+### It still spends your money
+
+The one surviving endpoint is the expensive one. `api/limits.py` caps it two
+ways, and they defend different things:
+
+| Variable | Default | What it is for |
+|---|---|---|
+| `RESUME_AGENT_DEMO_RUNS_PER_IP` | 3 per hour | Stops one person hammering it. Not a control — addresses are cheap and the header is spoofable. |
+| `RESUME_AGENT_DEMO_RUNS_PER_DAY` | 40 | Protects the account. One global counter, no notion of who, and no way to evade it by changing address. |
+
+Use a cheap provider. A run is roughly $0.50–1.00 on Claude and far less on
+DeepSeek, so 40 runs a day is either a rounding error or a bad week depending
+on which key you start the server with.
+
+### Deploying
+
+The `Dockerfile` builds a demo image: it installs tectonic, bakes in the ONNX
+embedding model, copies `profile.example` as the only profile, and sets
+`RESUME_AGENT_DEMO=1`. `.dockerignore` keeps your real `profile/` out of the
+build context.
+
+It needs a **persistent process**, not serverless. A run starts a detached
+`asyncio` task, keeps its state in an in-process dict, and streams from it over
+SSE for about a minute — on a function-per-request platform the background task
+dies when the POST returns and the SSE call lands in a different process with
+an empty registry. Render, Railway, Fly and a plain VM are all fine; Vercel and
+Lambda are not.
+
+```bash
+# Render: New → Web Service → point at this repo → Docker.
+# Set DEEPSEEK_API_KEY (or ANTHROPIC_API_KEY) in the dashboard, nowhere else.
+```
+
 ## Setup
 
 Requires **Python 3.12** (managed by `uv`) and a **LaTeX compiler**.

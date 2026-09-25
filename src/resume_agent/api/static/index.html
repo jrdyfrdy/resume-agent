@@ -719,6 +719,18 @@
   }
   dialog#modal .modal-actions .cta { margin-left: 0; }
 
+  .demo-banner {
+    margin: 0; padding: 11px 26px;
+    background: var(--accent-wash); border-bottom: 1px solid var(--rule);
+    font: 13.5px/1.55 var(--sans); color: var(--ink);
+  }
+  .demo-banner b { font-weight: 600; }
+  /* The demo has no writable profile, so the controls that would write are not
+     offered rather than offered-and-broken. */
+  body[data-demo] .add-entry,
+  body[data-demo] #new-profile,
+  body[data-demo] [data-mode="edit"] { display: none; }
+
   /* Reachable by a screen reader, invisible on screen. `display: none` would
      hide it from both, which is the opposite of the point. */
   .sr-only {
@@ -753,6 +765,13 @@
       <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
     </nav>
   </header>
+
+  <!--
+    Only on the public demo. Says plainly what this instance is, because a
+    visitor who edits for ten minutes and then finds the Save button missing
+    has been misled by omission.
+  -->
+  <p class="demo-banner hidden" id="demo-banner"></p>
 
   <!-- ============================================================ TAILOR -->
   <div role="tabpanel" id="panel-tailor" aria-labelledby="tab-tailor" tabindex="0">
@@ -1602,6 +1621,18 @@ async function loadProfileSummary() {
       `${esc(p.name)} · <b>${p.bullets}</b> achievements · <b>${p.experience}</b> jobs · ` +
       `<b>${p.projects}</b> projects`;
 
+    if (p.demo) {
+      document.body.dataset.demo = "1";
+      const left = p.runs_left_today;
+      $("demo-banner").innerHTML =
+        `<b>This is a live demo.</b> The career file belongs to a made-up person and ` +
+        `cannot be edited here. Paste a real job ad and it will build a resume from it — ` +
+        `runs are limited${left === null ? "" : `, ${left} left today`}, because they ` +
+        `cost the owner money. ` +
+        `<a href="https://github.com/jrdyfrdy/resume-agent">Clone it</a> to use your own details.`;
+      $("demo-banner").classList.remove("hidden");
+    }
+
     // The variable to set depends on the configured provider, so the page asks
     // the server which one rather than naming a vendor here. Telling a DeepSeek
     // user to set the Anthropic variable is worse than saying nothing. A test
@@ -1779,7 +1810,7 @@ async function start() {
       summary: $("summary").checked,
     }),
   });
-  if (!res.ok) { log("error", "could not start", await res.text()); finish(); return; }
+  if (!res.ok) { log("error", "could not start", await explain(res)); finish(); return; }
 
   const { run_id } = await res.json();
 

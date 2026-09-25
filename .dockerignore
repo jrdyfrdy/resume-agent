@@ -1,0 +1,11 @@
+profile/
+.profile-backups/
+.cache/
+.index/
+out/
+.venv/
+.git/
+.claude/
+evals/results/
+**/__pycache__/
+*.bundle

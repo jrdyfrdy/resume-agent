@@ -466,6 +466,125 @@ def test_the_first_run_panel_hands_over_no_shell_command() -> None:
     assert "identity.yaml" not in text.split("<script>")[0]
 
 
+# ===========================================================================
+# Demo mode
+#
+# The app has no authentication and eight endpoints that write career data or
+# spend an API key. Demo mode is the whole reason a public URL is defensible,
+# so these are the tests that would matter if they ever went red.
+# ===========================================================================
+
+
+def test_demo_exposes_nothing_but_the_run_endpoint() -> None:
+    """The security property, stated as one assertion.
+
+    Not "the write endpoints return 403" -- they are gone. Written against
+    every route the app declares rather than a list of the eight that exist
+    today, so an endpoint added later is caught here instead of in production.
+    """
+    app = create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True)
+
+    mutating = {
+        (method, route.path)
+        for route in app.routes
+        for method in (getattr(route, "methods", None) or set())
+        if method in {"POST", "PUT", "PATCH", "DELETE"}
+    }
+
+    assert mutating == {("POST", "/api/runs")}
+
+
+def test_the_ordinary_app_still_has_all_of_them() -> None:
+    """The counterpart: demo mode must be the exception, not a quiet change to
+    how the tool behaves on your own machine."""
+    app = create_app(graph_factory=lambda **_kw: FakeGraph(), demo=False)
+
+    mutating = {
+        (method, route.path)
+        for route in app.routes
+        for method in (getattr(route, "methods", None) or set())
+        if method in {"POST", "PUT", "PATCH", "DELETE"}
+    }
+
+    assert ("PUT", "/api/profile/file") in mutating
+    assert ("DELETE", "/api/profile/file") in mutating
+    assert len(mutating) == 8
+
+
+def test_a_write_in_demo_mode_never_reaches_a_handler() -> None:
+    """405 where the path survives for reads, 404 where it does not.
+
+    Not 403, and the difference is the point: a 403 means a handler ran and
+    made a decision, which is something that can be reasoned about wrongly. A
+    405 means the router found no such method to dispatch to.
+    """
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True))
+
+    # Path still exists for GET, so the method is what is refused.
+    assert client.put(
+        "/api/profile/file",
+        json={"profile": "profile.example", "path": "identity.yaml", "text": "name: x"},
+    ).status_code == 405
+    assert client.request(
+        "DELETE", "/api/profile/file",
+        json={"profile": "profile.example", "path": "identity.yaml"},
+    ).status_code == 405
+
+    # POST-only paths are gone entirely.
+    assert client.post(
+        "/api/profile/entry",
+        json={"profile": "profile.example", "role": "experience", "name": "X"},
+    ).status_code == 404
+
+    # And the file is untouched either way.
+    assert "John Doe" in client.get(
+        "/api/profile/file?profile=profile.example&path=identity.yaml"
+    ).json()["text"]
+
+
+def test_the_page_is_told_it_is_a_demo() -> None:
+    """So it can say so, rather than offering controls whose endpoints are gone."""
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True))
+    body = client.get("/api/profile").json()
+
+    assert body["demo"] is True
+    assert isinstance(body["runs_left_today"], int)
+
+
+def test_runs_are_rate_limited_only_on_the_demo() -> None:
+    """Your own machine, your own key, your own business."""
+    from resume_agent.api.limits import RunLimiter
+
+    limiter = RunLimiter(per_ip=2, per_day=3)
+
+    assert limiter.check("1.1.1.1") is None
+    assert limiter.check("1.1.1.1") is None
+    refused = limiter.check("1.1.1.1")
+    assert refused and "runs for the hour" in refused
+
+    # A different address is not covered by the per-address limit...
+    assert limiter.check("2.2.2.2") is None
+    # ...but the global cap is what actually protects the account, and no
+    # amount of changing address moves it.
+    refused = limiter.check("3.3.3.3")
+    assert refused and "limit for today" in refused
+
+
+def test_the_daily_cap_survives_a_bad_override() -> None:
+    """`int(os.environ[...])` here fails open, and failing open means an
+    unbounded bill."""
+    import os
+
+    from resume_agent.api.limits import DEFAULT_PER_DAY, PER_DAY_ENV_VAR, RunLimiter
+
+    for bad in ("", "0", "-5", "lots", "1e6"):
+        os.environ[PER_DAY_ENV_VAR] = bad
+        try:
+            assert RunLimiter().per_day == DEFAULT_PER_DAY, bad
+        finally:
+            os.environ.pop(PER_DAY_ENV_VAR, None)
+
+
 def test_the_editor_explains_what_a_save_does() -> None:
     """The user is editing non-regenerable data through a browser. The three
     guarantees that make that safe are worth stating where they act."""
@@ -1033,9 +1152,26 @@ def test_the_page_has_no_build_step() -> None:
 def test_the_page_fetches_nothing_off_this_machine() -> None:
     """`serve` is a localhost tool that has to come up with the network
     unplugged, so a webfont or a CDN stylesheet is a real failure mode and not
-    just a preference. Only same-origin `/api/...` URLs are allowed."""
-    for attribute in re.findall(r'(?:src|href)="([^"]*)"', page_source()):
-        assert not attribute.startswith(("http://", "https://", "//")), attribute
+    just a preference.
+
+    Checks what the browser *loads*, which is every `src` and the `href` of a
+    `<link>`. An `<a href>` is navigation: it fetches nothing until someone
+    clicks it, and the demo banner uses one to point at the repository. This
+    used to match both and so counted a hyperlink as a CDN dependency.
+    """
+    page = page_source()
+
+    loads = re.findall(r'src="([^"]*)"', page)
+    loads += re.findall(r'<link[^>]*href="([^"]*)"', page)
+
+    for url in loads:
+        assert not url.startswith(("http://", "https://", "//")), url
+
+    # And the thing the original check was really guarding: no external script
+    # and no stylesheet element at all. Matched as markup, not as prose -- the
+    # word "stylesheet" appears in a comment explaining the Advanced switch.
+    assert "<script src=" not in page
+    assert not re.search(r"<link[^>]*rel=[\"']?stylesheet", page)
 
 
 def test_the_rail_matches_the_real_graph() -> None:

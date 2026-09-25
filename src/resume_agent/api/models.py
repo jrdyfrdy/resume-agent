@@ -84,6 +84,11 @@ class ProfileSummary(BaseModel):
     # crosses this boundary -- only the name of the variable.
     provider: str
     credentials_var: str
+    # True on the public demo, where the profile is read-only and runs are
+    # rate limited. The page uses it to say so rather than offering controls
+    # whose endpoints have been removed.
+    demo: bool = False
+    runs_left_today: int | None = None
 
 
 class ProfileOption(BaseModel):

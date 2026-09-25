@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -32,9 +33,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
+from resume_agent.api.limits import RunLimiter
 from resume_agent.api.models import (
     ApplicationSummary,
     ApplyProposalRequest,
@@ -117,6 +119,19 @@ DEFAULT_PROFILE = "profile.example"
 # The file whose absence means "this directory is not a knowledge base". Chosen
 # because it is required and is the first thing `load_profile` reads.
 PROFILE_MARKER = "identity.yaml"
+
+# Serve a public, read-only tour instead of the real tool.
+#
+# This app has no authentication and eight endpoints that write career data or
+# spend an API key, which is exactly why `serve` binds to localhost. Demo mode
+# is what makes a public URL defensible: every mutating route is removed, so
+# there is nothing to authenticate *to*.
+DEMO_ENV_VAR = "RESUME_AGENT_DEMO"
+
+
+def demo_mode() -> bool:
+    """Whether this process is serving the public tour."""
+    return os.environ.get(DEMO_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
 
 
 def resolve_profile_dir(name: str, root: Path | None = None) -> Path:
@@ -226,12 +241,18 @@ class Run:
     history: list[NodeEvent] = field(default_factory=list)
 
 
-def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
+def create_app(
+    graph_factory=build_graph, chat_model_factory=None, demo: bool | None = None
+) -> FastAPI:
     """Build the app.
 
     `graph_factory` and `chat_model_factory` are injectable so the tests can
     drive every endpoint with fakes -- no API key, no network, no compiler.
+
+    `demo` serves a read-only tour: see `_strip_mutating_routes`.
     """
+    demo = demo_mode() if demo is None else demo
+    limiter = RunLimiter() if demo else None
     app = FastAPI(title="resume-agent", docs_url="/api/docs")
     runs: dict[str, Run] = {}
     # Conversations live as long as the process, like `runs`. A transcript is
@@ -283,6 +304,8 @@ def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
             has_compiler=find_compiler() is not None,
             provider=provider_name,
             credentials_var=credentials_var,
+            demo=demo,
+            runs_left_today=limiter.remaining_today() if limiter else None,
         )
 
     @app.get("/api/profiles", response_model=list[ProfileOption])
@@ -489,11 +512,18 @@ def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
     # -- running -----------------------------------------------------------
 
     @app.post("/api/runs", response_model=RunCreated, status_code=202)
-    async def start_run(request: RunRequest) -> RunCreated:
+    async def start_run(request: RunRequest, http: Request) -> RunCreated:
         # Checked here rather than inside the run: an unknown profile should be
         # a 400 on the request that named it, not an error buried in a stream
         # the page is still waiting to connect to.
         resolve_profile_dir(request.profile)
+
+        # Only on the public demo. Running this on your own machine, against
+        # your own key, is nobody's business but yours.
+        if limiter is not None:
+            refusal = limiter.check(_client_ip(http))
+            if refusal:
+                raise HTTPException(status_code=429, detail=refusal)
 
         run = Run(run_id=uuid.uuid4().hex[:12])
         runs[run.run_id] = run
@@ -530,7 +560,56 @@ def create_app(graph_factory=build_graph, chat_model_factory=None) -> FastAPI:
             raise HTTPException(status_code=404, detail="no PDF for this run")
         return FileResponse(run.pdf_path, media_type="application/pdf", filename="resume.pdf")
 
+    if demo:
+        _strip_mutating_routes(app)
     return app
+
+
+# The only mutating endpoint a public visitor may reach. Everything else that
+# writes career data or deletes a file is removed outright in demo mode.
+#
+# Deliberately an allow-list, not a block-list. A block-list has one failure
+# mode that matters: the endpoint added next year by someone who has never read
+# this file. With an allow-list, a new route is excluded by default and somebody
+# has to make a decision to expose it.
+DEMO_ALLOWED_MUTATIONS = {("POST", "/api/runs")}
+
+
+def _client_ip(request: Request) -> str:
+    """The visitor's address, as best we can tell behind a proxy.
+
+    `X-Forwarded-For` is set by the platform's load balancer and is trivially
+    spoofable by a client that sends its own. That is tolerable because the
+    per-address limit is a courtesy, not a control -- the global daily cap in
+    `limits.py` is what actually protects the account, and no header can move
+    that one.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _strip_mutating_routes(app: FastAPI) -> None:
+    """Remove every mutating route except the one the demo exists to show.
+
+    The routes are *removed*, not made to return 403: there is nothing to probe,
+    nothing to get past, and no handler reachable by a path some guard failed to
+    anticipate. `test_demo_exposes_nothing_but_the_run_endpoint` fails loudly if
+    that ever stops being true.
+    """
+    mutating = {"POST", "PUT", "PATCH", "DELETE"}
+    kept = []
+    for route in app.router.routes:
+        methods = getattr(route, "methods", None) or set()
+        touched = methods & mutating
+        if not touched:
+            kept.append(route)
+            continue
+        path = getattr(route, "path", "")
+        if all((method, path) in DEMO_ALLOWED_MUTATIONS for method in touched):
+            kept.append(route)
+    app.router.routes = kept
 
 
 # ---------------------------------------------------------------------------
