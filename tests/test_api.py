@@ -482,7 +482,7 @@ def test_demo_exposes_nothing_but_the_run_endpoint() -> None:
     every route the app declares rather than a list of the eight that exist
     today, so an endpoint added later is caught here instead of in production.
     """
-    app = create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True)
+    app = create_app(graph_factory=lambda **_kw: FakeGraph(), mode="demo")
 
     mutating = {
         (method, route.path)
@@ -497,7 +497,7 @@ def test_demo_exposes_nothing_but_the_run_endpoint() -> None:
 def test_the_ordinary_app_still_has_all_of_them() -> None:
     """The counterpart: demo mode must be the exception, not a quiet change to
     how the tool behaves on your own machine."""
-    app = create_app(graph_factory=lambda **_kw: FakeGraph(), demo=False)
+    app = create_app(graph_factory=lambda **_kw: FakeGraph(), mode="local")
 
     mutating = {
         (method, route.path)
@@ -518,7 +518,7 @@ def test_a_write_in_demo_mode_never_reaches_a_handler() -> None:
     made a decision, which is something that can be reasoned about wrongly. A
     405 means the router found no such method to dispatch to.
     """
-    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True))
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), mode="demo"))
 
     # Path still exists for GET, so the method is what is refused.
     assert client.put(
@@ -544,7 +544,7 @@ def test_a_write_in_demo_mode_never_reaches_a_handler() -> None:
 
 def test_the_page_is_told_it_is_a_demo() -> None:
     """So it can say so, rather than offering controls whose endpoints are gone."""
-    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), demo=True))
+    client = TestClient(create_app(graph_factory=lambda **_kw: FakeGraph(), mode="demo"))
     body = client.get("/api/profile").json()
 
     assert body["demo"] is True

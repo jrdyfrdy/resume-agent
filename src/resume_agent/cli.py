@@ -10,10 +10,12 @@
     resume-agent resume-run --jd ...                            (M7)
     resume-agent applications                                   (M7)
     resume-agent serve                                          (M9)
+    resume-agent users list | approve <email> | reject <email>  (M10)
 """
 
 from __future__ import annotations
 
+import os
 from enum import IntEnum
 from pathlib import Path
 from typing import Annotated
@@ -56,6 +58,7 @@ class ExitCode(IntEnum):
     JD_PARSE_FAILED = 5
     # A flag that could never be right, as opposed to work that failed.
     USAGE = 6
+    NO_SUCH_USER = 7
 
 
 app = typer.Typer(
@@ -684,10 +687,11 @@ def serve(
 ) -> None:
     """Serve the web UI. Spec 8's M9.
 
-    Binds to localhost by default. The API has no authentication and the run
-    registry is an in-process dict, so this is a single-user tool on your own
-    machine -- binding it to 0.0.0.0 would expose an unauthenticated endpoint
-    that spends money.
+    Binds to localhost by default. In local mode the API has no authentication
+    and the run registry is an in-process dict, so this is a single-user tool on
+    your own machine -- binding it to 0.0.0.0 would expose an unauthenticated
+    endpoint that spends money. Multi-user mode (`RESUME_AGENT_MULTIUSER=1`) is
+    the one that is safe to put on a public address.
     """
     import uvicorn
 
@@ -707,6 +711,106 @@ def serve(
         reload=reload,
         log_level="info",
     )
+
+
+# ===========================================================================
+# Multi-user accounts (M10)
+# ===========================================================================
+
+users_app = typer.Typer(
+    no_args_is_help=True,
+    help="Who is waiting for access, and letting them in. Reads DATABASE_URL.",
+)
+app.add_typer(users_app, name="users")
+
+
+def _accounts_db():
+    """The accounts database the deployed app uses, or a clear exit.
+
+    Only `DATABASE_URL` is needed -- not the Google or session settings -- so
+    this still works when the web app cannot start. That is the point of it.
+    """
+    from resume_agent.accounts.auth import DATABASE_URL_ENV_VAR  # noqa: PLC0415
+    from resume_agent.accounts.db import AccountsDB  # noqa: PLC0415
+
+    url = os.environ.get(DATABASE_URL_ENV_VAR, "").strip()
+    if not url:
+        typer.secho(
+            f"Set {DATABASE_URL_ENV_VAR} to the database the web app uses "
+            "(the Neon connection string).",
+            fg=typer.colors.RED, err=True,
+        )
+        raise typer.Exit(ExitCode.USAGE)
+    try:
+        db = AccountsDB(url)
+    except ValueError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED, err=True)
+        raise typer.Exit(ExitCode.USAGE) from None
+    db.create_schema()
+    return db
+
+
+@users_app.command("list")
+def users_list() -> None:
+    """Everyone who has signed in, the people waiting first."""
+    db = _accounts_db()
+    try:
+        people = db.users()
+    finally:
+        db.close()
+    if not people:
+        typer.secho("Nobody has signed in yet.", fg=typer.colors.YELLOW)
+        return
+
+    colours = {"pending": typer.colors.YELLOW, "approved": typer.colors.GREEN,
+               "rejected": typer.colors.RED}
+    typer.echo()
+    typer.secho(f"  {'status':<9} {'email':<34} {'signed up':<11} name", bold=True)
+    for user in people:
+        status = typer.style(f"{user.status:<9}", fg=colours.get(user.status))
+        owner = "  (you)" if user.is_admin else ""
+        typer.echo(
+            f"  {status} {user.email[:34]:<34} {user.created_at[:10]:<11} {user.name}{owner}"
+        )
+    waiting = sum(user.status == "pending" for user in people)
+    typer.echo()
+    if waiting:
+        typer.echo(f"  {waiting} waiting. resume-agent users approve <email>")
+        typer.echo()
+
+
+def _decide(email: str, status: str) -> None:
+    db = _accounts_db()
+    try:
+        user = db.user_by_email(email)
+        if user is None:
+            typer.secho(
+                f"Nobody has signed in as {email}. They need to sign in once "
+                "before they can be approved.",
+                fg=typer.colors.RED, err=True,
+            )
+            raise typer.Exit(ExitCode.NO_SUCH_USER)
+        db.decide(user.id, status, by="cli")
+    finally:
+        db.close()
+    typer.secho(f"{user.email}: {status}", fg=typer.colors.GREEN)
+
+
+@users_app.command("approve")
+def users_approve(
+    email: Annotated[str, typer.Argument(help="The address they signed in with.")],
+) -> None:
+    """Let someone in. Takes effect on their next click; no need to sign in again."""
+    _decide(email, "approved")
+
+
+@users_app.command("reject")
+def users_reject(
+    email: Annotated[str, typer.Argument(help="The address they signed in with.")],
+) -> None:
+    """Turn someone away, or take access back from someone already approved."""
+    _decide(email, "rejected")
+
 
 if __name__ == "__main__":
     app()

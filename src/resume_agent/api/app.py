@@ -31,11 +31,18 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 
+from resume_agent.accounts.auth import (
+    MULTIUSER_ENV_VAR,
+    ConfigurationError,
+    MultiUser,
+    make_gate,
+)
+from resume_agent.accounts.auth import install as install_auth
 from resume_agent.api.limits import RunLimiter
 from resume_agent.api.models import (
     ApplicationSummary,
@@ -132,6 +139,27 @@ DEMO_ENV_VAR = "RESUME_AGENT_DEMO"
 def demo_mode() -> bool:
     """Whether this process is serving the public tour."""
     return os.environ.get(DEMO_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
+
+
+Mode = Literal["local", "demo", "multiuser"]
+
+
+def resolve_mode() -> Mode:
+    """Which of the three ways to run this app, read once from the environment.
+
+    `local` is the default and is this tool as it has always been: one person,
+    their own machine, no sign-in. `demo` is a public read-only tour. `multiuser`
+    is accounts and approval. Asking for demo *and* multiuser is refused rather
+    than resolved by precedence -- they have opposite permission models, and a
+    silent guess about which one wins is exactly the wrong thing to get wrong on
+    a public URL.
+    """
+    multi = os.environ.get(MULTIUSER_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
+    if multi and demo_mode():
+        raise ConfigurationError(
+            f"set {DEMO_ENV_VAR} or {MULTIUSER_ENV_VAR}, not both: they are different sites"
+        )
+    return "multiuser" if multi else "demo" if demo_mode() else "local"
 
 
 def resolve_profile_dir(name: str, root: Path | None = None) -> Path:
@@ -242,18 +270,45 @@ class Run:
 
 
 def create_app(
-    graph_factory=build_graph, chat_model_factory=None, demo: bool | None = None
+    graph_factory=build_graph,
+    chat_model_factory=None,
+    mode: Mode | None = None,
+    multiuser: MultiUser | None = None,
 ) -> FastAPI:
     """Build the app.
 
     `graph_factory` and `chat_model_factory` are injectable so the tests can
     drive every endpoint with fakes -- no API key, no network, no compiler.
+    `multiuser` is the same idea for accounts: the tests pass a SQLite store and
+    a fake Google, and sign in as whoever they like.
 
-    `demo` serves a read-only tour: see `_strip_mutating_routes`.
+    `mode` is read from the environment when not given; see `resolve_mode`.
     """
-    demo = demo_mode() if demo is None else demo
+    mode = mode or resolve_mode()
+    demo = mode == "demo"
+    if mode == "multiuser" and multiuser is None:
+        multiuser = MultiUser.from_env()
     limiter = RunLimiter() if demo else None
-    app = FastAPI(title="resume-agent", docs_url="/api/docs")
+
+    # In multi-user mode every route runs the gate. It has to be a dependency of
+    # the app itself, passed here, because FastAPI copies an app's dependencies
+    # onto each route at the moment the route is registered.
+    gate = make_gate(multiuser) if mode == "multiuser" else None
+
+    # FastAPI registers its schema and docs pages as plain Starlette routes, not
+    # API routes, so the app-level dependency above is never applied to them --
+    # the gate would silently not run, and the whole API schema would be public.
+    # In multi-user mode they are simply not served. Found by
+    # `test_every_route_that_is_not_public_needs_a_session`, which walks every
+    # registered route rather than trusting the dependency to reach them all.
+    docs = {} if gate is None else {"openapi_url": None, "docs_url": None, "redoc_url": None}
+    app = FastAPI(
+        title="resume-agent",
+        dependencies=[Depends(gate)] if gate else [],
+        **({"docs_url": "/api/docs"} | docs),
+    )
+    if mode == "multiuser":
+        install_auth(app, multiuser)
     runs: dict[str, Run] = {}
     # Conversations live as long as the process, like `runs`. A transcript is
     # not career data; what you accepted out of it is, and that is on disk.
