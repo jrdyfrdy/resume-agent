@@ -119,7 +119,9 @@ def test_finalize_writes_a_row(tmp_path: Path, monkeypatch) -> None:
     from resume_agent.models.job import JobSpec, JobSpecFields
 
     db = tmp_path / "applications.db"
-    monkeypatch.setattr(finalize_module, "insert_application", lambda r: insert_application(r, db))
+    monkeypatch.setattr(
+        finalize_module, "insert_application", lambda r, db_path=None: insert_application(r, db)
+    )
 
     job = JobSpec.from_fields(
         JobSpecFields(
@@ -153,6 +155,40 @@ def test_finalize_writes_a_row(tmp_path: Path, monkeypatch) -> None:
     assert stored[0].jd_hash == job.source_hash
 
 
+def test_a_run_can_name_its_own_tracker(tmp_path: Path) -> None:
+    """How the multi-user server keeps one person's applications out of a
+    tracker file every other person's runs also write to."""
+    from resume_agent.graph.nodes import finalize as finalize_module
+    from resume_agent.graph.state import RunOptions
+    from resume_agent.models.job import JobSpec, JobSpecFields
+
+    own = tmp_path / "this-run" / "applications.db"
+    own.parent.mkdir()
+    job = JobSpec.from_fields(
+        JobSpecFields(
+            company="Acme Corp", title="Backend Engineer", seniority="mid",
+            domain="payments", requirements=[], responsibilities=[], ats_keywords=[],
+            culture_signals=[], tone="formal", red_flags=[],
+        ),
+        "raw",
+    )
+    usual = len(list_applications())
+
+    finalize_module.finalize(
+        {
+            "profile_path": "profile.example",
+            "options": RunOptions(out_dir=str(tmp_path / "out"), tracker_db=str(own)),
+            "job_spec": job,
+            "tailored": [],
+            "selected": [],
+            "page_count": 1,
+        }
+    )
+
+    assert [row.company for row in list_applications(own)] == ["Acme Corp"]
+    assert len(list_applications()) == usual, "and nothing in the usual tracker"
+
+
 def test_a_tracker_failure_does_not_fail_the_run(tmp_path: Path, monkeypatch, caplog) -> None:
     """The artifacts are already on disk; losing a bookkeeping row is not fatal.
 
@@ -165,7 +201,7 @@ def test_a_tracker_failure_does_not_fail_the_run(tmp_path: Path, monkeypatch, ca
     from resume_agent.graph.state import RunOptions
     from resume_agent.models.job import JobSpec, JobSpecFields
 
-    def explode(_row):
+    def explode(_row, db_path=None):
         raise OSError("disk full")
 
     monkeypatch.setattr(finalize_module, "insert_application", explode)

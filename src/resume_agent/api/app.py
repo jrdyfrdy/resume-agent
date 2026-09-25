@@ -16,9 +16,16 @@ paying for. A run is started once and appends to its own event log; the SSE
 endpoint reads that log by index, so a refresh replays and reconnects instead
 of restarting.
 
-**The run registry is an in-process dict.** This is a localhost, single-user
-tool; anything else would be inventing a deployment story the spec does not ask
-for. It is the first thing to replace if this ever runs anywhere real.
+**The run registry is an in-process dict.** Locally this is a single-user
+tool, and anything more would be inventing a deployment story. Multi-user mode
+keeps the dict for what is in flight -- one process serves everyone -- but
+records every run and its PDF in the accounts database, which is what outlives
+a restart.
+
+**Multi-user mode scopes by directory.** Every route that touches a profile gets
+it from `open_profile`, which in that mode hands back the signed-in person's own
+workspace folder. Runs and chat turns carry their owner and are a 404 to anyone
+else. See `accounts/` for the rest.
 """
 
 from __future__ import annotations
@@ -28,22 +35,25 @@ import logging
 import os
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 
 from resume_agent.accounts.auth import (
     MULTIUSER_ENV_VAR,
     ConfigurationError,
     MultiUser,
     make_gate,
+    signed_in_user,
 )
 from resume_agent.accounts.auth import install as install_auth
-from resume_agent.api.limits import RunLimiter
+from resume_agent.accounts.db import ago
+from resume_agent.api.limits import AccountQuota, RunLimiter
 from resume_agent.api.models import (
     ApplicationSummary,
     ApplyProposalRequest,
@@ -259,6 +269,8 @@ class Run:
 
     run_id: str
     status: str = "queued"
+    # Multi-user mode: whose run this is. Every lookup checks it.
+    user_id: str | None = None
     summary: RunSummary | None = None
     pdf_path: Path | None = None
     task: asyncio.Task | None = None
@@ -307,8 +319,16 @@ def create_app(
         dependencies=[Depends(gate)] if gate else [],
         **({"docs_url": "/api/docs"} | docs),
     )
-    if mode == "multiuser":
-        install_auth(app, multiuser)
+    # Everything below checks `multi`, never `mode`: it is the accounts store
+    # when there is one, and None otherwise.
+    multi = multiuser if mode == "multiuser" else None
+    if multi is not None:
+        install_auth(app, multi)
+    quota = AccountQuota() if multi is not None else None
+    # Held across the quota check and the row that uses it up, so two clicks at
+    # once cannot both be granted the last run of the day.
+    quota_lock = asyncio.Lock()
+    run_slots = asyncio.Semaphore(quota.concurrent) if quota is not None else None
     runs: dict[str, Run] = {}
     # Conversations live as long as the process, like `runs`. A transcript is
     # not career data; what you accepted out of it is, and that is on disk.
@@ -327,17 +347,68 @@ def create_app(
     # page, which works. `serve --reload` is the way to iterate.
     page = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
+    # -- whose profile, whose run -------------------------------------------
+    #
+    # Every route that touches a profile gets its directory here, and in
+    # multi-user mode this is the one change that scopes them all. The folder
+    # is the signed-in user's workspace, rebuilt from the database for this one
+    # operation and saved back if it changed, and the requested name is looked
+    # up *inside it*. Another person's id is therefore not a forbidden profile
+    # but an unknown one: the same 400 as a typo, which confirms nothing.
+
+    @asynccontextmanager
+    async def open_profile(http: Request, name: str, *, writable: bool = False):
+        if multi is None:
+            yield (resolve_writable_profile_dir if writable else resolve_profile_dir)(name)
+            return
+        async with multi.workspaces.profile(signed_in_user(http)) as folder:
+            yield resolve_profile_dir(name, folder.parent)
+
+    def owned_run(http: Request, run_id: str) -> Run:
+        run = runs.get(run_id)
+        # Someone else's run is a 404, never a 403: a 403 would confirm the id
+        # exists, and that is already more than another user should learn.
+        if run is None or (multi is not None and run.user_id != signed_in_user(http).id):
+            raise HTTPException(status_code=404, detail="no such run")
+        return run
+
+    def owned_turn(http: Request, turn_id: str):
+        turn = chats.get(turn_id)
+        # A turn belongs to the profile it was about, which in multi-user mode
+        # is named after its owner.
+        if turn is None or (multi is not None and turn.profile != signed_in_user(http).id):
+            raise HTTPException(status_code=404, detail="no such turn")
+        return turn
+
+    def backup_shown(backup: Path) -> str | None:
+        # In multi-user mode every save is already a version in the database,
+        # and this path is on a server disk the person cannot reach.
+        return None if multi is not None else str(backup)
+
+    async def runs_used(user_id: str) -> tuple[int, int]:
+        """This person's runs and everyone's, in the last 24 hours."""
+        since = ago(24)
+        mine = await asyncio.to_thread(multi.db.runs_since, since, user_id=user_id)
+        everyone = await asyncio.to_thread(multi.db.runs_since, since)
+        return mine, everyone
+
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
         return page
 
     @app.get("/api/profile", response_model=ProfileSummary)
-    async def profile_summary(profile: str = DEFAULT_PROFILE) -> ProfileSummary:
-        directory = resolve_profile_dir(profile)
-        try:
-            loaded = load_profile(directory)
-        except ProfileLoadError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def profile_summary(http: Request, profile: str = DEFAULT_PROFILE) -> ProfileSummary:
+        async with open_profile(http, profile) as directory:
+            try:
+                loaded = load_profile(directory)
+            except ProfileLoadError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        runs_left = None
+        if limiter is not None:
+            runs_left = limiter.remaining_today()
+        elif quota is not None:
+            runs_left = quota.remaining(*await runs_used(signed_in_user(http).id))
 
         try:
             provider = resolve_provider()
@@ -360,21 +431,28 @@ def create_app(
             provider=provider_name,
             credentials_var=credentials_var,
             demo=demo,
-            runs_left_today=limiter.remaining_today() if limiter else None,
+            runs_left_today=runs_left,
         )
 
     @app.get("/api/profiles", response_model=list[ProfileOption])
-    async def profiles() -> list[ProfileOption]:
-        """Every knowledge base on disk that a run could point at."""
-        return discover_profiles()
+    async def profiles(http: Request) -> list[ProfileOption]:
+        """Every knowledge base on disk that a run could point at.
+
+        In multi-user mode, the person's own -- or nothing, before they have
+        made it.
+        """
+        if multi is None:
+            return discover_profiles()
+        async with multi.workspaces.profile(signed_in_user(http)) as folder:
+            return discover_profiles(folder.parent)
 
     @app.get("/api/profile/detail", response_model=ProfileDetail)
-    async def profile_detail(profile: str = DEFAULT_PROFILE) -> ProfileDetail:
-        directory = resolve_profile_dir(profile)
-        try:
-            loaded = load_profile(directory)
-        except ProfileLoadError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def profile_detail(http: Request, profile: str = DEFAULT_PROFILE) -> ProfileDetail:
+        async with open_profile(http, profile) as directory:
+            try:
+                loaded = load_profile(directory)
+            except ProfileLoadError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
         return build_profile_detail(profile, loaded)
 
     # -- editing -----------------------------------------------------------
@@ -384,41 +462,43 @@ def create_app(
     # layer only translates its errors into status codes.
 
     @app.get("/api/profile/files", response_model=ProfileFileList)
-    async def profile_files(profile: str = DEFAULT_PROFILE) -> ProfileFileList:
-        directory = resolve_profile_dir(profile)
-        try:
-            return ProfileFileList(profile=profile, files=relative_profile_files(directory))
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def profile_files(http: Request, profile: str = DEFAULT_PROFILE) -> ProfileFileList:
+        async with open_profile(http, profile) as directory:
+            try:
+                return ProfileFileList(profile=profile, files=relative_profile_files(directory))
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/profile/file", response_model=ProfileFile)
-    async def profile_file(path: str, profile: str = DEFAULT_PROFILE) -> ProfileFile:
-        directory = resolve_profile_dir(profile)
-        try:
-            return ProfileFile(
-                profile=profile, path=path, text=read_profile_file(directory, path)
-            )
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def profile_file(
+        http: Request, path: str, profile: str = DEFAULT_PROFILE
+    ) -> ProfileFile:
+        async with open_profile(http, profile) as directory:
+            try:
+                return ProfileFile(
+                    profile=profile, path=path, text=read_profile_file(directory, path)
+                )
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.put("/api/profile/file", response_model=SaveResult)
-    async def save_profile_file(request: SaveFileRequest) -> SaveResult:
-        directory = resolve_writable_profile_dir(request.profile)
-        try:
-            resolve_editable_path(directory, request.path)
-        except ProfileWriteError as exc:
-            # A path the editor should never have sent: a bug, not bad YAML.
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def save_profile_file(request: SaveFileRequest, http: Request) -> SaveResult:
+        async with open_profile(http, request.profile, writable=True) as directory:
+            try:
+                resolve_editable_path(directory, request.path)
+            except ProfileWriteError as exc:
+                # A path the editor should never have sent: a bug, not bad YAML.
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        try:
-            backup = write_profile_file(directory, request.path, request.text)
-        except ProfileWriteError as exc:
-            # Invalid content is an ordinary part of editing YAML, so it is a
-            # result rather than an error status. The file on disk is unchanged.
-            return SaveResult(ok=False, error=str(exc))
+            try:
+                backup = write_profile_file(directory, request.path, request.text)
+            except ProfileWriteError as exc:
+                # Invalid content is an ordinary part of editing YAML, so it is
+                # a result rather than an error status. The file is unchanged.
+                return SaveResult(ok=False, error=str(exc))
 
         logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
-        return SaveResult(ok=True, backup=str(backup))
+        return SaveResult(ok=True, backup=backup_shown(backup))
 
     # -- structured editing ------------------------------------------------
     #
@@ -427,75 +507,114 @@ def create_app(
     # into a status code and lets the writer keep its guarantees.
 
     @app.get("/api/profile/form", response_model=FormDocument)
-    async def profile_form(path: str, profile: str = DEFAULT_PROFILE) -> FormDocument:
-        directory = resolve_profile_dir(profile)
-        try:
-            document = read_document(directory, path)
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return FormDocument(**document, skill_usage=skill_usage(directory))
+    async def profile_form(
+        http: Request, path: str, profile: str = DEFAULT_PROFILE
+    ) -> FormDocument:
+        async with open_profile(http, profile) as directory:
+            try:
+                document = read_document(directory, path)
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return FormDocument(**document, skill_usage=skill_usage(directory))
 
     @app.put("/api/profile/form", response_model=SaveResult)
-    async def save_profile_form(request: SaveFormRequest) -> SaveResult:
-        directory = resolve_writable_profile_dir(request.profile)
-        try:
-            resolve_editable_path(directory, request.path)
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def save_profile_form(request: SaveFormRequest, http: Request) -> SaveResult:
+        async with open_profile(http, request.profile, writable=True) as directory:
+            try:
+                resolve_editable_path(directory, request.path)
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        try:
-            backup = write_document(directory, request.path, request.data)
-        except ProfileWriteError as exc:
-            # Same contract as the text editor: content that does not validate
-            # is a result, not an error status, and the file is unchanged.
-            return SaveResult(ok=False, error=str(exc))
+            try:
+                backup = write_document(directory, request.path, request.data)
+            except ProfileWriteError as exc:
+                # Same contract as the text editor: content that does not
+                # validate is a result, not an error status, and the file is
+                # unchanged.
+                return SaveResult(ok=False, error=str(exc))
 
         logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
-        return SaveResult(ok=True, backup=str(backup))
+        return SaveResult(ok=True, backup=backup_shown(backup))
 
     @app.post("/api/profile/entry", response_model=ProfileFile, status_code=201)
-    async def add_entry(request: CreateEntryRequest) -> ProfileFile:
-        directory = resolve_writable_profile_dir(request.profile)
-        try:
-            relative = create_entry(directory, request.role, request.name)
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return ProfileFile(
-            profile=request.profile, path=relative, text=read_profile_file(directory, relative)
-        )
+    async def add_entry(request: CreateEntryRequest, http: Request) -> ProfileFile:
+        async with open_profile(http, request.profile, writable=True) as directory:
+            try:
+                relative = create_entry(directory, request.role, request.name)
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            return ProfileFile(
+                profile=request.profile,
+                path=relative,
+                text=read_profile_file(directory, relative),
+            )
 
     @app.delete("/api/profile/file", response_model=SaveResult)
-    async def remove_file(request: DeleteFileRequest) -> SaveResult:
-        directory = resolve_writable_profile_dir(request.profile)
-        try:
-            backup = delete_document(directory, request.path)
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return SaveResult(ok=True, backup=str(backup))
+    async def remove_file(request: DeleteFileRequest, http: Request) -> SaveResult:
+        async with open_profile(http, request.profile, writable=True) as directory:
+            try:
+                backup = delete_document(directory, request.path)
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return SaveResult(ok=True, backup=backup_shown(backup))
 
     @app.post("/api/profile/create", response_model=ProfileFileList, status_code=201)
-    async def create_profile(request: CreateProfileRequest) -> ProfileFileList:
+    async def create_profile(request: CreateProfileRequest, http: Request) -> ProfileFileList:
         """Start a new profile directory, empty or copied from the example.
 
         The answer to "where does my knowledge base go", made a button. It
         defaults to empty: copying the example produces a directory that loads
         straight away, but everything in it then has to be deleted before the
         profile describes its actual owner.
+
+        In multi-user mode `request.name` is not used. Each person has exactly
+        one profile, its folder is named after their id -- which is what keeps
+        their search index and history apart from everyone else's -- and the
+        response says what it is called.
         """
-        target = Path.cwd() / request.name
-        try:
-            if request.mode == "empty":
-                create_empty_profile(target, name=request.display_name)
-            else:
-                scaffold_profile(resolve_profile_dir(request.source), target)
-            return ProfileFileList(
-                profile=request.name, files=relative_profile_files(target)
-            )
-        except ProfileWriteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        source = None
+        if request.mode == "example":
+            # The copy is read from the server's own directory, which is not the
+            # person's. Only the shipped example may be copied out of it.
+            if multi is not None and not request.source.endswith(".example"):
+                raise HTTPException(status_code=400, detail="only the example can be copied")
+            source = resolve_profile_dir(request.source)
+
+        target_of = (
+            nullcontext(Path.cwd() / request.name)
+            if multi is None
+            else multi.workspaces.profile(signed_in_user(http))
+        )
+        async with target_of as target:
+            try:
+                if source is None:
+                    create_empty_profile(target, name=request.display_name)
+                else:
+                    scaffold_profile(source, target)
+                return ProfileFileList(profile=target.name, files=relative_profile_files(target))
+            except ProfileWriteError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/applications", response_model=list[ApplicationSummary])
-    async def applications(limit: int = 20) -> list[ApplicationSummary]:
+    async def applications(http: Request, limit: int = 20) -> list[ApplicationSummary]:
+        if multi is not None:
+            # The shared tracker file would list everyone's applications to
+            # everyone; this person's runs come from the accounts database.
+            rows = await asyncio.to_thread(multi.db.runs, signed_in_user(http).id, limit)
+            return [
+                ApplicationSummary(
+                    id=None,
+                    applied_on=row["created_at"][:10],
+                    company=row["company"] or "",
+                    title=row["title"] or "",
+                    overall_fit=row["overall_fit"],
+                    outcome=None,
+                    run_id=row["id"],
+                    has_pdf=row["has_pdf"],
+                )
+                for row in rows
+                if row["status"] == "done"
+            ]
         return [
             ApplicationSummary(
                 id=row.id,
@@ -516,24 +635,25 @@ def create_app(
     # thing that writes, and it goes through the form layer like everything else.
 
     @app.post("/api/chat", response_model=ChatCreated, status_code=202)
-    async def start_chat(request: ChatRequest) -> ChatCreated:
-        directory = resolve_profile_dir(request.profile)
-        try:
-            load_profile(directory)
-        except ProfileLoadError as exc:
-            # A broken profile is exactly when you most want to ask about it, so
-            # this says which file rather than failing silently.
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    async def start_chat(request: ChatRequest, http: Request) -> ChatCreated:
+        # Loaded here, inside the request, and handed to the turn: in multi-user
+        # mode the folder is rebuilt by the next request, so a turn that read it
+        # later could catch it half-written.
+        async with open_profile(http, request.profile) as directory:
+            try:
+                profile = load_profile(directory)
+            except ProfileLoadError as exc:
+                # A broken profile is exactly when you most want to ask about
+                # it, so this says which file rather than failing silently.
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         turn = chats.start(request.profile, request.message)
-        asyncio.create_task(_chat_turn(turn, directory, chats, chat_model_factory))
+        asyncio.create_task(_chat_turn(turn, profile, chats, chat_model_factory))
         return ChatCreated(turn_id=turn.turn_id, intent=turn.intent)
 
     @app.get("/api/chat/{turn_id}/events")
-    async def stream_chat(turn_id: str) -> StreamingResponse:
-        turn = chats.get(turn_id)
-        if turn is None:
-            raise HTTPException(status_code=404, detail="no such turn")
+    async def stream_chat(turn_id: str, http: Request) -> StreamingResponse:
+        turn = owned_turn(http, turn_id)
         return StreamingResponse(
             _chat_sse(turn),
             media_type="text/event-stream",
@@ -541,25 +661,23 @@ def create_app(
         )
 
     @app.get("/api/chat/{turn_id}", response_model=ChatTurnView)
-    async def get_chat_turn(turn_id: str) -> ChatTurnView:
-        turn = chats.get(turn_id)
-        if turn is None:
-            raise HTTPException(status_code=404, detail="no such turn")
-        return _turn_view(turn)
+    async def get_chat_turn(turn_id: str, http: Request) -> ChatTurnView:
+        return _turn_view(owned_turn(http, turn_id))
 
     @app.post("/api/chat/apply", response_model=ChatTurnView)
-    async def apply_proposal(request: ApplyProposalRequest) -> ChatTurnView:
-        directory = resolve_writable_profile_dir(request.profile)
-        turn = chats.get(request.turn_id)
-        if turn is None or turn.proposal is None:
-            raise HTTPException(status_code=404, detail="no proposal for that turn")
+    async def apply_proposal(request: ApplyProposalRequest, http: Request) -> ChatTurnView:
+        async with open_profile(http, request.profile, writable=True) as directory:
+            turn = chats.get(request.turn_id)
+            if turn is None or turn.proposal is None:
+                raise HTTPException(status_code=404, detail="no proposal for that turn")
+            owned_turn(http, request.turn_id)
 
-        try:
-            turn.applied = apply_proposal_items(turn.proposal, directory, request.accept)
-        except (ProfileWriteError, ValueError) as exc:
-            # Includes the whole-directory validation refusing the write, which
-            # is a normal outcome worth reading rather than a crash.
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            try:
+                turn.applied = apply_proposal_items(turn.proposal, directory, request.accept)
+            except (ProfileWriteError, ValueError) as exc:
+                # Includes the whole-directory validation refusing the write,
+                # which is a normal outcome worth reading rather than a crash.
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         logger.info("chat applied %d item(s) to %s", len(turn.applied), request.profile)
         return _turn_view(turn)
@@ -568,6 +686,9 @@ def create_app(
 
     @app.post("/api/runs", response_model=RunCreated, status_code=202)
     async def start_run(request: RunRequest, http: Request) -> RunCreated:
+        if multi is not None:
+            return await start_run_for(signed_in_user(http), request)
+
         # Checked here rather than inside the run: an unknown profile should be
         # a 400 on the request that named it, not an error buried in a stream
         # the page is still waiting to connect to.
@@ -585,20 +706,41 @@ def create_app(
         run.task = asyncio.create_task(_execute(run, request, graph_factory))
         return RunCreated(run_id=run.run_id)
 
+    async def start_run_for(user, request: RunRequest) -> RunCreated:
+        """A multi-user run: counted, snapshotted, and recorded before it starts."""
+        run = Run(run_id=uuid.uuid4().hex[:12], user_id=user.id)
+        async with quota_lock:
+            # The run reads a private copy taken now, so saving the profile
+            # while it runs cannot change what it is reading.
+            snapshot = await multi.workspaces.snapshot_for_run(user, run.run_id)
+            try:
+                resolve_profile_dir(request.profile, snapshot.parent)
+                refusal = quota.refusal(*await runs_used(user.id))
+                if refusal:
+                    raise HTTPException(status_code=429, detail=refusal)
+            except HTTPException:
+                multi.workspaces.discard_run(run.run_id)
+                raise
+            # Recorded as it starts, inside the lock: a run in flight counts
+            # against today's quota, so ten quick clicks cannot start ten.
+            await asyncio.to_thread(multi.db.start_run, run.run_id, user.id)
+
+        runs[run.run_id] = run
+        run.task = asyncio.create_task(
+            _execute_for_user(run, request, graph_factory, multi, run_slots, snapshot)
+        )
+        return RunCreated(run_id=run.run_id)
+
     @app.get("/api/runs/{run_id}", response_model=RunSummary)
-    async def get_run(run_id: str) -> RunSummary:
-        run = runs.get(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="no such run")
+    async def get_run(run_id: str, http: Request) -> RunSummary:
+        run = owned_run(http, run_id)
         if run.summary is not None:
             return run.summary
         return RunSummary(run_id=run_id, status=run.status)
 
     @app.get("/api/runs/{run_id}/events")
-    async def stream_events(run_id: str) -> StreamingResponse:
-        run = runs.get(run_id)
-        if run is None:
-            raise HTTPException(status_code=404, detail="no such run")
+    async def stream_events(run_id: str, http: Request) -> StreamingResponse:
+        run = owned_run(http, run_id)
         return StreamingResponse(
             _sse(run),
             media_type="text/event-stream",
@@ -609,7 +751,18 @@ def create_app(
         )
 
     @app.get("/api/runs/{run_id}/pdf")
-    async def get_pdf(run_id: str) -> FileResponse:
+    async def get_pdf(run_id: str, http: Request) -> Response:
+        if multi is not None:
+            # From the database, with ownership in the query: it outlives the
+            # server restarting, and another person's run id finds nothing.
+            pdf = await asyncio.to_thread(multi.db.run_pdf, signed_in_user(http).id, run_id)
+            if pdf is None:
+                raise HTTPException(status_code=404, detail="no PDF for this run")
+            return Response(
+                pdf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": 'attachment; filename="resume.pdf"'},
+            )
         run = runs.get(run_id)
         if run is None or run.pdf_path is None or not run.pdf_path.is_file():
             raise HTTPException(status_code=404, detail="no PDF for this run")
@@ -672,8 +825,21 @@ def _strip_mutating_routes(app: FastAPI) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
-    """Drive the graph, appending filtered events to the run's log."""
+async def _execute(
+    run: Run,
+    request: RunRequest,
+    graph_factory,
+    *,
+    profile_path: Path | None = None,
+    out_dir: Path | None = None,
+    tracker_db: Path | None = None,
+    settle: Callable[[RunSummary, Path | None], Awaitable[None]] | None = None,
+) -> None:
+    """Drive the graph, appending filtered events to the run's log.
+
+    The keyword arguments are multi-user mode's; left out, the run reads the
+    profile the request named and writes where it always has.
+    """
     started = time.monotonic()
 
     def emit(event: NodeEvent) -> None:
@@ -682,7 +848,8 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
     try:
         run.status = "running"
         options = RunOptions(
-            out_dir=str(Path("out") / "api" / run.run_id),
+            out_dir=str(out_dir or Path("out") / "api" / run.run_id),
+            tracker_db=str(tracker_db) if tracker_db else None,
             strict=request.strict,
             use_judge=request.use_judge,
             write_cover_letter=request.write_cover_letter,
@@ -691,7 +858,7 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
             summary=request.summary,
         )
         graph = graph_factory()
-        state_in = initial_state(request.jd, request.profile, options)
+        state_in = initial_state(request.jd, profile_path or request.profile, options)
 
         final: dict[str, Any] = {}
         async for event in graph.astream_events(
@@ -718,10 +885,15 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
         # `astream_events` yields deltas; the authoritative final state is
         # whatever the graph settled on, so read it back rather than trusting
         # the accumulation above.
-        run.summary = summarise_state(run.run_id, "done", final)
+        summary = summarise_state(run.run_id, "done", final)
         pdf = final.get("pdf_path")
-        run.pdf_path = Path(pdf) if pdf else None
-        run.status = "done"
+        pdf_path = Path(pdf) if pdf else None
+        if settle is not None:
+            # Before anyone can be told it is done -- and a summary on the run
+            # *says* done, which is why it is not attached until after -- so the
+            # Download click that follows always finds the PDF where it is served.
+            await settle(summary, pdf_path)
+        run.summary, run.pdf_path, run.status = summary, pdf_path, "done"
         emit(NodeEvent(kind="status", name="done", elapsed_s=round(time.monotonic() - started, 1)))
 
     except Exception as exc:  # noqa: BLE001 - the page must be told, not left hanging
@@ -731,7 +903,56 @@ async def _execute(run: Run, request: RunRequest, graph_factory) -> None:
         emit(NodeEvent(kind="error", name="failed", detail=str(exc)))
 
 
-async def _chat_turn(turn, profile_dir: Path, chats: Registry, model_factory) -> None:
+async def _execute_for_user(
+    run: Run,
+    request: RunRequest,
+    graph_factory,
+    multi: MultiUser,
+    slots: asyncio.Semaphore,
+    snapshot: Path,
+) -> None:
+    """A multi-user run: wait for a free slot, run on the snapshot, keep the result.
+
+    Everything the run writes lands beside its snapshot and is deleted after.
+    The database keeps the outcome and the PDF; the disk of a free instance is
+    not somewhere anything should have to survive.
+    """
+
+    async def settle(summary: RunSummary, path: Path | None) -> None:
+        pdf = await asyncio.to_thread(path.read_bytes) if path and path.is_file() else None
+        await asyncio.to_thread(
+            multi.db.finish_run,
+            run.run_id,
+            status="done",
+            company=summary.company,
+            title=summary.title,
+            overall_fit=summary.overall_fit,
+            pdf=pdf,
+        )
+
+    try:
+        if slots.locked():
+            run.history.append(
+                NodeEvent(kind="status", name="queued",
+                          detail="waiting for another resume to finish")
+            )
+        async with slots:
+            await _execute(
+                run, request, graph_factory,
+                profile_path=snapshot,
+                out_dir=snapshot.parent / "out",
+                tracker_db=snapshot.parent / "applications.db",
+                settle=settle,
+            )
+        if run.status == "failed":
+            await asyncio.to_thread(multi.db.finish_run, run.run_id, status="failed")
+    except Exception:  # noqa: BLE001 - the run itself has already said what happened
+        logger.exception("run %s: could not record its outcome", run.run_id)
+    finally:
+        multi.workspaces.discard_run(run.run_id)
+
+
+async def _chat_turn(turn, profile, chats: Registry, model_factory) -> None:
     """Run one chat turn, appending to its own event log.
 
     Two shapes, decided before the call: advice streams prose as it arrives,
@@ -739,8 +960,6 @@ async def _chat_turn(turn, profile_dir: Path, chats: Registry, model_factory) ->
     partial JSON would show the user something they should never see.
     """
     try:
-        profile = load_profile(profile_dir)
-
         if turn.intent == "extract":
             turn.emit("status", text="reading what you wrote…")
             proposal = extract(

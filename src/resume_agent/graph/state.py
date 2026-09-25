@@ -65,6 +65,11 @@ class RunOptions(BaseModel):
     # are only worth spending when the summary says something the achievements
     # underneath it do not.
     summary: bool = False
+    # Where `finalize` records the application. None is the usual tracker
+    # (`default_tracker_db`). The multi-user server points each run at its own
+    # throwaway file: one shared tracker would list every user's applications
+    # to every other, and its durable record is the accounts database instead.
+    tracker_db: str | None = None
 
 
 class AgentState(TypedDict, total=False):

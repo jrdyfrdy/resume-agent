@@ -181,6 +181,7 @@ def _record_application(state: AgentState, run_dir: Path, letter) -> int | None:
         return None
 
     fit = state.get("fit_report")
+    tracker_db = state["options"].tracker_db
     try:
         return insert_application(
             ApplicationRow(
@@ -194,7 +195,8 @@ def _record_application(state: AgentState, run_dir: Path, letter) -> int | None:
                 cover_letter_words=letter.word_count if letter else None,
                 bullet_ids=[t.source_id for t in state.get("tailored", [])],
                 dropped_bullets=state.get("dropped_bullets", []),
-            )
+            ),
+            db_path=Path(tracker_db) if tracker_db else None,
         )
     except Exception as exc:  # noqa: BLE001 - bookkeeping must not fail a good run
         logger.error("finalize: could not write the tracker row: %s", exc)

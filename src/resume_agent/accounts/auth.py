@@ -284,6 +284,8 @@ def install(app: FastAPI, multi: MultiUser) -> None:
         cascade, every file, every earlier version and every run."""
         user = signed_in_user(request)
         await asyncio.to_thread(multi.db.delete_user, user.id)
+        # The database is the record; this is the copies on the server's disk.
+        await multi.workspaces.forget(user)
         request.session.clear()
         return JSONResponse({"ok": True})
 

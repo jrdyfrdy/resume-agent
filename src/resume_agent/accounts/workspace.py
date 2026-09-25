@@ -104,6 +104,26 @@ class Workspaces:
     def discard_run(self, run_id: str) -> None:
         shutil.rmtree(self.root / "runs" / run_id, ignore_errors=True)
 
+    async def forget(self, user: User) -> None:
+        """Remove everything on this server's disk derived from the user's file.
+
+        Deleting the account removes the database rows; this is the rest. The
+        search index and the editor's backups are both named after the profile
+        folder, which is named after the user, so they are found the same way
+        they were made. Taken under the user's lock so it cannot race a save.
+        """
+        from resume_agent.kb.index import index_path_for  # noqa: PLC0415
+        from resume_agent.kb.writer import default_backup_dir  # noqa: PLC0415
+
+        async with self._lock(user.id):
+            shutil.rmtree(self.parent_for(user), ignore_errors=True)
+            shutil.rmtree(default_backup_dir() / user.id, ignore_errors=True)
+            index = index_path_for(self.folder_for(user))
+            for path in (index, index.with_name(index.name + "-wal"),
+                         index.with_name(index.name + "-shm")):
+                path.unlink(missing_ok=True)
+        self._locks.pop(user.id, None)
+
 
 def materialize(folder: Path, files: dict[str, str]) -> None:
     """Make `folder` contain exactly `files` -- and not exist, if there are none."""

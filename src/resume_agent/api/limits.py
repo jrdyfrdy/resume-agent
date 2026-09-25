@@ -1,4 +1,8 @@
-"""Rate limiting for the public demo. Not used when you run this locally.
+"""Rate limits for the two public modes. Neither applies when you run this locally.
+
+`RunLimiter` is the public demo's, keyed on address because a demo visitor has
+no other identity. `AccountQuota` is multi-user mode's, keyed on the account;
+see its docstring for why it counts from the database instead.
 
 A run costs real money against whichever API key the server was started with, so
 on a public URL the interesting question is not "can someone break in" -- there
@@ -99,3 +103,60 @@ class RunLimiter:
     def remaining_today(self) -> int:
         self._prune(self._today, time.time(), 24 * 60 * 60)
         return max(0, self.per_day - len(self._today))
+
+
+# ---------------------------------------------------------------------------
+# Multi-user mode
+# ---------------------------------------------------------------------------
+
+DEFAULT_PER_USER = 5
+DEFAULT_CONCURRENT = 1
+
+PER_USER_ENV_VAR = "RESUME_AGENT_RUNS_PER_USER_PER_DAY"
+ACCOUNTS_PER_DAY_ENV_VAR = "RESUME_AGENT_RUNS_PER_DAY"
+CONCURRENT_ENV_VAR = "RESUME_AGENT_CONCURRENT_RUNS"
+
+
+@dataclass
+class AccountQuota:
+    """How many resumes each approved person, and everyone together, may make.
+
+    **The counts come from the accounts database, not from memory.** The demo's
+    in-process counter resets whenever the free instance goes to sleep, which on
+    a site people visit occasionally is most of the time -- so a limit held in
+    memory would be no limit at all. Each run is recorded when it starts, and
+    "used today" is a count of rows from the last 24 hours. This class only
+    decides, given those counts; it is pure arithmetic so it can be tested as such.
+
+    `concurrent` is not a quota but a memory ceiling: the free instance has
+    512 MB, and two runs at once -- each with the embedding model and a LaTeX
+    compile -- do not fit. A run over the ceiling waits its turn rather than
+    being refused.
+    """
+
+    per_user: int = field(
+        default_factory=lambda: _positive_int(PER_USER_ENV_VAR, DEFAULT_PER_USER)
+    )
+    per_day: int = field(
+        default_factory=lambda: _positive_int(ACCOUNTS_PER_DAY_ENV_VAR, DEFAULT_PER_DAY)
+    )
+    concurrent: int = field(
+        default_factory=lambda: _positive_int(CONCURRENT_ENV_VAR, DEFAULT_CONCURRENT)
+    )
+
+    def refusal(self, used_by_user: int, used_by_everyone: int) -> str | None:
+        """`None` to allow; otherwise the sentence to show the person."""
+        if used_by_user >= self.per_user:
+            return (
+                f"You have made your {self.per_user} resumes for today. "
+                "You can make more tomorrow."
+            )
+        if used_by_everyone >= self.per_day:
+            return (
+                "The site has reached its limit for today -- it runs on the owner's "
+                "own API key. Try again tomorrow."
+            )
+        return None
+
+    def remaining(self, used_by_user: int, used_by_everyone: int) -> int:
+        return max(0, min(self.per_user - used_by_user, self.per_day - used_by_everyone))

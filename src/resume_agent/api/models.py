@@ -366,6 +366,10 @@ class ApplicationSummary(BaseModel):
     title: str
     overall_fit: float | None
     outcome: str | None
+    # Multi-user mode only, where history comes from the accounts database and
+    # a past run's PDF can still be downloaded by its id.
+    run_id: str | None = None
+    has_pdf: bool = False
 
 
 def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
