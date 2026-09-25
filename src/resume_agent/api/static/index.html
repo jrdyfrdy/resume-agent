@@ -751,6 +751,7 @@
   #gate .lede + .lede { margin-top: 14px; }
   #gate form, #gate > button { margin-top: 28px; }
   #gate .cta { margin-left: 0; }
+  #gate .note { margin: 0 0 24px; font-size: 14px; }
   body[data-gate] header .facts,
   body[data-gate] header .advanced-switch,
   body[data-gate] header .ready,
@@ -2948,12 +2949,25 @@ async function loadAccount() {
   return "app";
 }
 
+/* Why the last sign-in did not get anyone in, when the server said. It sends
+   the browser back here with ?signin=... rather than showing an error page. */
+const SIGNIN_NOTES = {
+  incomplete: "Signing in did not finish, so nothing changed. Try again.",
+  unverified: "Google has not verified that email address, so it cannot be let in. " +
+              "Try another Google account.",
+};
+
 function showGate(kind) {
   document.body.dataset.gate = kind;
   const who = account ? `Signed in as <b>${esc(account.email)}</b>. ` : "";
   const out = `<button type="button" class="ghost" id="gate-sign-out">Sign out</button>`;
+  const params = new URLSearchParams(location.search);
+  const note = SIGNIN_NOTES[params.get("signin")];
+  // Said once. A reload of the same address should not repeat it.
+  if (params.has("signin")) history.replaceState(null, "", location.pathname + location.hash);
   $("gate").innerHTML = {
     "signed-out": `
+      ${note && kind === "signed-out" ? `<p class="note blocked">${esc(note)}</p>` : ""}
       <h1>Resumes made only from what you have actually done.</h1>
       <p class="lede">Write down your jobs, projects and results once. Then paste any job ad and
         get a one-page resume built from them — reworded to fit the job, never invented.</p>

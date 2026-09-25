@@ -28,12 +28,19 @@ OWNER = "owner@example.com"
 
 
 class FakeGoogle:
-    """Whoever `claims` says, verified or not. Set it, then hit the callback."""
+    """Whoever `claims` says, verified or not. Set it, then hit the callback.
+
+    Or set `raises`, to be the Google that says no -- a cancelled consent
+    screen, or a callback whose state no longer checks out.
+    """
 
     def __init__(self) -> None:
         self.claims: dict = {}
+        self.raises: Exception | None = None
 
     async def __call__(self, _request) -> dict:
+        if self.raises is not None:
+            raise self.raises
         return dict(self.claims)
 
 
@@ -179,6 +186,44 @@ def test_an_unverified_email_is_turned_away_entirely(app, google, multi) -> None
 
     assert client.get("/api/me").status_code == 401
     assert multi.db.user_by_email("impostor@example.com") is None
+    # And the page is told why, rather than shown a JSON error.
+    back = client.get("/auth/callback", follow_redirects=False)
+    assert back.headers["location"] == "/?signin=unverified"
+
+
+@pytest.mark.parametrize("error", ["access_denied", "mismatching_state"])
+def test_a_sign_in_that_does_not_finish_goes_back_to_the_start(
+    app, google, multi, error
+) -> None:
+    """Cancel on Google's consent screen, or Back into a used callback. Found
+    before the first deploy: the stand-in Google never failed, and this was a
+    bare 500 page."""
+    from authlib.integrations.starlette_client import OAuthError  # noqa: PLC0415
+
+    google.raises = OAuthError(error=error)
+    client = TestClient(app)
+
+    response = client.get("/auth/callback", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/?signin=incomplete"
+    assert client.get("/api/me").status_code == 401
+    assert multi.db.users() == []
+
+
+def test_the_page_can_explain_every_way_back_from_sign_in() -> None:
+    """The server says why a sign-in did not work with `?signin=<reason>`; the
+    page has one sentence per reason. A reason with no sentence would send
+    someone back to the sign-in page with no idea why."""
+    root = Path(__file__).resolve().parent.parent / "src" / "resume_agent"
+    sent = set(re.findall(r'"/\?signin=([a-z]+)"', (root / "accounts" / "auth.py").read_text(
+        encoding="utf-8")))
+    page = (root / "api" / "static" / "index.html").read_text(encoding="utf-8")
+    notes = re.search(r"const SIGNIN_NOTES = \{(.*?)\n\};", page, re.S)
+
+    assert sent == {"incomplete", "unverified"}
+    assert notes, "the page no longer declares SIGNIN_NOTES"
+    assert set(re.findall(r"^\s*([a-z]+):", notes.group(1), re.M)) == sent
 
 
 def test_a_deleted_account_ends_its_session(app, google, multi) -> None:

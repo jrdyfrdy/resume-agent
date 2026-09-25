@@ -224,6 +224,7 @@ def signed_in_user(request: Request) -> User:
 
 def install(app: FastAPI, multi: MultiUser) -> None:
     """Sessions, the Google routes, `/api/me`, and the admin endpoints."""
+    from authlib.integrations.starlette_client import OAuthError  # noqa: PLC0415
     from starlette.middleware.sessions import SessionMiddleware  # noqa: PLC0415
 
     app.add_middleware(
@@ -246,13 +247,20 @@ def install(app: FastAPI, multi: MultiUser) -> None:
 
     @app.get("/auth/callback", name="auth_callback")
     async def auth_callback(request: Request):
-        claims = await identity(request)
+        try:
+            claims = await identity(request)
+        except OAuthError as exc:
+            # Cancelled on Google's screen, or a callback that can no longer be
+            # checked: the Back button, a reload, a session that expired on the
+            # way. Found before the first deploy -- the tests' stand-in Google
+            # never fails, and this was a bare 500. It is the sign-in page
+            # again, with a line saying it did not finish.
+            logger.info("sign-in did not complete: %s", exc.error)
+            return RedirectResponse("/?signin=incomplete", status_code=303)
         if not claims.get("email_verified"):
             # Approval depends on the email being real. An unverified one is
             # refused outright rather than admitted to the queue.
-            raise HTTPException(
-                status_code=403, detail="Google has not verified this email address."
-            )
+            return RedirectResponse("/?signin=unverified", status_code=303)
         existing = await asyncio.to_thread(multi.db.user_by_email, claims["email"])
         user = await asyncio.to_thread(
             multi.db.sign_in,
