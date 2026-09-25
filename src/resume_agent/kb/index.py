@@ -37,7 +37,7 @@ import sqlite_vec
 
 from resume_agent.kb.embeddings import DEFAULT_DIMENSIONS, DEFAULT_MODEL, FastEmbedEmbeddings
 from resume_agent.kb.tokenize import tokenize
-from resume_agent.models.profile import Bullet, ExperienceEntry, Profile, ProjectEntry
+from resume_agent.models.profile import Bullet, Entry, Profile
 
 INDEX_DIR = Path(".index")
 
@@ -98,8 +98,8 @@ def build_embed_text(bullet: Bullet) -> str:
     return " ".join(parts)
 
 
-def _entry_label(entry: ExperienceEntry | ProjectEntry) -> str:
-    return entry.org if isinstance(entry, ExperienceEntry) else entry.name
+def _entry_label(entry: Entry) -> str:
+    return entry.label
 
 
 def collect_indexed_bullets(profile: Profile) -> list[IndexedBullet]:

@@ -190,3 +190,32 @@ def test_rebuild_is_deterministic(example_profile: Profile, tmp_path: Path, embe
     assert first.dense_search(query, 8) == second.dense_search(query, 8)
     first.close()
     second.close()
+
+
+# ===========================================================================
+# Every entry type can be indexed
+# ===========================================================================
+
+
+def test_a_profile_with_every_entry_type_can_be_indexed() -> None:
+    """Regression. `_entry_label` was an isinstance chain that knew jobs and
+    projects, and fell through to `.name` for anything else. A leadership entry
+    has no `name`, so a fresh graduate's profile raised AttributeError at
+    retrieval -- every run on it would have crashed before any model was
+    called. Each entry type now declares its own `label`."""
+    from resume_agent.kb.index import collect_indexed_bullets
+    from resume_agent.kb.loader import load_profile
+
+    student = load_profile(
+        Path(__file__).resolve().parent / "fixtures" / "profile.student"
+    )
+    rows = collect_indexed_bullets(student)
+
+    labels = {row.entry_id: row.entry_label for row in rows}
+    assert labels["ldr_student_radio"] == "Kingsbridge Student Radio"
+    assert labels["pub_caption_study"] == (
+        "Reading Speed as a Practical Quality Signal for Lecture Captions"
+    )
+    assert labels["exp_harlow_press"] == "Harlow Press"
+    assert labels["prj_caption_lint"] == "CaptionLint"
+    assert len(rows) == len(student.all_bullets())

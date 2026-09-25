@@ -201,7 +201,7 @@ def extract(
     structured = structured_output(llm, ExtractionFields)
 
     known = "\n".join(
-        f"- {entry.id}: {getattr(entry, 'org', None) or getattr(entry, 'name', '')}"
+        f"- {entry.id}: {entry.label}"
         for entry in profile.entries()
     )
     vocabulary = "\n".join(sorted({skill.canonical for skill in profile.skills}))
@@ -314,7 +314,7 @@ def _deletion_item(item_id: str, deletion: ProposedDeletion, profile: Profile) -
 
     entry = next((e for e in profile.entries() if e.id == target), None)
     if entry is not None:
-        label = getattr(entry, "org", None) or getattr(entry, "name", "")
+        label = entry.label
         count = len(entry.bullets)
         summary = f"Remove {entry.id} ({label})"
         if count:

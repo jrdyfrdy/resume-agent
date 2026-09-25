@@ -76,6 +76,11 @@ class ExperienceEntry(_Strict):
     tech: list[str] = Field(default_factory=list)
     bullets: list[Bullet]
 
+    @property
+    def label(self) -> str:
+        """What this entry is called in a list: the employer."""
+        return self.org
+
 
 class ProjectEntry(_Strict):
     """A project. Same bullet shape as experience, plus links. Spec 3.2."""
@@ -90,6 +95,10 @@ class ProjectEntry(_Strict):
     repo_url: str | None = None
     live_url: str | None = None
     bullets: list[Bullet]
+
+    @property
+    def label(self) -> str:
+        return self.name
 
 
 class LeadershipEntry(_Strict):
@@ -115,6 +124,10 @@ class LeadershipEntry(_Strict):
     tech: list[str] = Field(default_factory=list)
     bullets: list[Bullet]
 
+    @property
+    def label(self) -> str:
+        return self.org
+
 
 class PublicationEntry(_Strict):
     """A paper, article or talk. Carries bullets, so it is an entry too."""
@@ -132,7 +145,16 @@ class PublicationEntry(_Strict):
     tech: list[str] = Field(default_factory=list)
     bullets: list[Bullet]
 
+    @property
+    def label(self) -> str:
+        return self.title
 
+
+# Every entry type defines `label`, the name it goes by in a list. Per type, on
+# purpose: the alternative was an isinstance chain in each consumer, and the one
+# in `kb/index.py` fell through to `.name` for leadership entries -- which have
+# no `name` -- so a fresh graduate's profile could not be indexed at all.
+#
 # Anything that carries bullets. Used as the argument type wherever code walks
 # `Profile.entries()` without caring which section it came from -- which, after
 # the shared `id`/`start`/`end`/`tech`/`bullets` fields, is nearly everywhere.

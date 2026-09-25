@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from resume_agent.latex.metrics import estimate_lines
 from resume_agent.models.fit import COVERED_THRESHOLD, EvidenceMatch, SelectionResult
 from resume_agent.models.job import JobSpec
-from resume_agent.models.profile import Bullet, ExperienceEntry, Profile, ProjectEntry
+from resume_agent.models.profile import Bullet, Entry, Profile
 
 # Spec 5: "<= 3 bullets sharing the same theme". Diversity constraint -- five
 # performance bullets for a job that also wants API design reads as one-note.
@@ -55,7 +55,7 @@ class ScoredBullet:
 
     bullet_id: str
     entry_id: str
-    entry_type: str  # "experience" | "project"
+    entry_type: str  # "experience" | "project" | "leadership" | "publication"
     score: float
     lines: int
     themes: tuple[str, ...]
@@ -79,7 +79,7 @@ def recency_decay(
     return max(RECENCY_FLOOR, decayed)
 
 
-def _entry_of(profile: Profile, bullet_id: str) -> ExperienceEntry | ProjectEntry:
+def _entry_of(profile: Profile, bullet_id: str) -> Entry:
     for entry in profile.entries():
         if any(b.id == bullet_id for b in entry.bullets):
             return entry
