@@ -11,10 +11,16 @@ tests are at the end.
 One `TestClient` is shared and each person carries their own cookies onto it,
 so every request runs on the same event loop -- as it does under uvicorn --
 and a run started by one request is still alive for the next.
+
+The accounts database is SQLite, or Postgres when
+`RESUME_AGENT_TEST_DATABASE_URL` is set -- the same switch, and the same
+warning, as `test_accounts_db.py`: **point it at a throwaway database; these
+tests drop its tables.**
 """
 
 from __future__ import annotations
 
+import os
 import shutil
 import threading
 import time
@@ -32,6 +38,7 @@ from resume_agent.api.limits import AccountQuota
 from resume_agent.chat.extract import ExtractionFields
 from resume_agent.kb.index import index_path_for
 from resume_agent.kb.loader import load_profile
+from tests.test_accounts_db import POSTGRES_URL_ENV_VAR
 from tests.test_api import make_job
 from tests.test_chat import ScriptedExtractor
 
@@ -153,12 +160,24 @@ def make_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.chdir(tmp_path)
     shutil.copytree(REPO_ROOT / "profile.example", tmp_path / "profile.example")
     clients: list[TestClient] = []
+    stores: list[AccountsDB] = []
+
+    postgres = os.environ.get(POSTGRES_URL_ENV_VAR)
+    url = postgres or f"sqlite:///{tmp_path / 'accounts.db'}"
+    if postgres:
+        # A clean slate once per test, not once per `build`: the restart test
+        # builds twice precisely so the second server finds the first one's data.
+        fresh = AccountsDB(postgres)
+        for table in ("runs", "profile_versions", "profile_files", "users"):
+            fresh._run(f"DROP TABLE IF EXISTS {table}")  # noqa: SLF001 - test setup
+        fresh.close()
 
     def build(**env: str) -> World:
         for name, value in env.items():
             monkeypatch.setenv(name, value)
-        db = AccountsDB(f"sqlite:///{tmp_path / 'accounts.db'}")
+        db = AccountsDB(url)
         db.create_schema()
+        stores.append(db)
         google = FakeGoogle()
         graph = ReadsTheProfile()
         multi = MultiUser(
@@ -181,6 +200,8 @@ def make_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     yield build
     for client in clients:
         client.__exit__(None, None, None)
+    for store in stores:
+        store.close()
 
 
 @pytest.fixture
