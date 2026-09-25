@@ -358,3 +358,28 @@ def test_cookies_are_secure_only_over_https() -> None:
     assert AuthSettings(session_secret="s" * 48, public_url="https://x.onrender.com").secure_cookies
     assert not AuthSettings(session_secret="s" * 48, public_url="http://localhost:8000").secure_cookies
     assert not AuthSettings(session_secret="s" * 48).secure_cookies
+
+
+# ===========================================================================
+# The page speaks the gate's language
+# ===========================================================================
+
+
+def test_every_change_the_page_sends_is_json() -> None:
+    """The gate refuses a mutating /api request that is not JSON (415) -- that is
+    the CSRF defence. So a page call that forgot the header would work locally
+    and fail only on the shared site, which is the worst place to find out.
+    Account deletion is the likeliest to be written without one: it has no body
+    worth sending."""
+    page = (Path(__file__).resolve().parent.parent
+            / "src" / "resume_agent" / "api" / "static" / "index.html").read_text(encoding="utf-8")
+
+    calls = re.findall(r"fetch\(\s*([^,)]+),\s*\{(.*?)\}\s*\)", page, re.S)
+    mutating = [
+        (url, options) for url, options in calls
+        if re.search(r'method:\s*"(POST|PUT|PATCH|DELETE)"', options) and "/api/" in url
+    ]
+
+    assert len(mutating) >= 8, f"found only {len(mutating)}; is the pattern still right?"
+    for url, options in mutating:
+        assert '"Content-Type": "application/json"' in options, f"{url.strip()} is not sent as JSON"

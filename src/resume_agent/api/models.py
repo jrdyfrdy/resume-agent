@@ -357,6 +357,17 @@ class RunSummary(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class FileVersion(BaseModel):
+    """One saved state of a profile file. Multi-user mode's replacement for the
+    backups folder, which on a server is a path nobody can open."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    created_at: str
+    deleted: bool
+    text: str
+
+
 class ApplicationSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -601,3 +601,17 @@ def test_a_nonsense_limit_falls_back_rather_than_lifting_it(monkeypatch) -> None
 
     assert quota.per_user == 5
     assert quota.concurrent == 1
+
+
+def test_earlier_versions_are_listed_and_only_your_own(alex_and_blake) -> None:
+    alex, blake = alex_and_blake
+    query = {"profile": alex.profile, "path": "identity.yaml"}
+    original = alex.get("/api/profile/file", params=query).json()["text"]
+    alex.put("/api/profile/file", json={**query, "text": original.replace("Alex Lee", "Alex Q")})
+
+    versions = alex.get("/api/profile/history", params={"path": "identity.yaml"}).json()
+
+    assert [("Alex Q" in v["text"]) for v in versions] == [True, False], "newest first"
+    # Blake asking about the same path gets Blake's own file's history.
+    theirs = blake.get("/api/profile/history", params={"path": "identity.yaml"}).json()
+    assert theirs and all("Alex" not in v["text"] for v in theirs)

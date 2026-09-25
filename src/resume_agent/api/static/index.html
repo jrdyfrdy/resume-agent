@@ -731,6 +731,65 @@
   body[data-demo] #new-profile,
   body[data-demo] [data-mode="edit"] { display: none; }
 
+  /* -------------------------------------------------------------- accounts
+
+     Only when the server has sign-in (multi-user mode). It says so by answering
+     /api/me at all; the local tool has no such route, so none of this shows
+     there. Sentences true only on your own machine -- "stays on this computer",
+     "the backups folder" -- carry .local-only, and their replacements
+     .account-only. */
+  body[data-accounts] .local-only { display: none; }
+  body:not([data-accounts]) .account-only { display: none; }
+  /* One career file per person, so there is nothing to pick between. */
+  body[data-accounts] .picker label[for="profile-select"],
+  body[data-accounts] #profile-select,
+  body[data-accounts] #new-profile { display: none; }
+
+  /* Signed out, waiting, or turned away: the gate stands in for the whole app,
+     because every call the app would make is refused anyway. */
+  #gate { padding: 56px 26px 64px; max-width: 680px; }
+  #gate .lede + .lede { margin-top: 14px; }
+  #gate form, #gate > button { margin-top: 28px; }
+  #gate .cta { margin-left: 0; }
+  body[data-gate] header .facts,
+  body[data-gate] header .advanced-switch,
+  body[data-gate] header .ready,
+  body[data-gate] header .tabs,
+  body[data-gate] [role="tabpanel"],
+  body[data-gate] #demo-banner,
+  body[data-gate] footer { display: none; }
+  body[data-gate] header { padding-bottom: 15px; }
+
+  .account { position: relative; font: 12px/1 var(--mono); }
+  .account summary {
+    cursor: pointer; list-style: none; color: var(--ink-2); padding: 4px 0;
+    max-width: 26ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .account summary::-webkit-details-marker { display: none; }
+  .account summary:hover, .account[open] summary { color: var(--accent); }
+  .account .menu {
+    position: absolute; right: 0; top: calc(100% + 8px); z-index: 5;
+    display: grid; gap: 8px; min-width: 200px;
+    background: var(--card); border: 1px solid var(--rule-firm); border-radius: 6px;
+    box-shadow: var(--shadow-md); padding: 12px;
+  }
+
+  .people-wrap { overflow-x: auto; }
+  table.apps .actions { text-align: right; white-space: nowrap; }
+  table.apps .actions button { margin-left: 6px; }
+  table.apps td { padding-right: 12px; }
+  table.apps a { color: var(--accent); }
+  .status-pending { color: var(--warn); }
+  .status-approved { color: var(--ok); }
+  .status-rejected { color: var(--ink-3); }
+
+  pre.version-text {
+    margin: 8px 0 0; padding: 8px 10px; max-height: 14rem; overflow: auto;
+    background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
+    font: 12px/1.5 var(--mono); white-space: pre-wrap; color: var(--ink);
+  }
+  dialog#modal .choice details summary { cursor: pointer; color: var(--ink-2); font-size: 12.5px; }
+
   /* Reachable by a screen reader, invisible on screen. `display: none` would
      hide it from both, which is the opposite of the point. */
   .sr-only {
@@ -756,6 +815,14 @@
       <span>Advanced</span>
     </label>
     <div class="ready" id="ready"><span class="dot"></span><span id="ready-text">checking…</span></div>
+    <!-- Multi-user mode only: who is signed in, and the two ways out. -->
+    <details class="account hidden" id="account">
+      <summary id="account-email"></summary>
+      <div class="menu">
+        <button type="button" class="ghost" id="sign-out">Sign out</button>
+        <button type="button" class="btn-danger" id="delete-account">Delete my account</button>
+      </div>
+    </details>
 
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button role="tab" id="tab-tailor"  aria-controls="panel-tailor"  aria-selected="true"  data-tab="tailor">Create Resume</button>
@@ -763,8 +830,12 @@
       <button role="tab" id="tab-chat"    aria-controls="panel-chat"    aria-selected="false" data-tab="chat"    tabindex="-1">Chat</button>
       <button role="tab" id="tab-guide"   aria-controls="panel-guide"   aria-selected="false" data-tab="guide"   tabindex="-1">Guide</button>
       <button role="tab" id="tab-history" aria-controls="panel-history" aria-selected="false" data-tab="history" tabindex="-1">History<span class="count" id="tab-history-count"></span></button>
+      <button role="tab" id="tab-admin"   aria-controls="panel-admin"   aria-selected="false" data-tab="admin"   tabindex="-1" class="hidden">People<span class="count" id="tab-admin-count"></span></button>
     </nav>
   </header>
+
+  <!-- Multi-user mode, when there is no app to show yet. Filled by showGate(). -->
+  <section id="gate" class="hidden" aria-live="polite"></section>
 
   <!--
     Only on the public demo. Says plainly what this instance is, because a
@@ -850,6 +921,10 @@
       -->
       <section id="steps-panel" class="hidden">
         <h2 class="sr-only">Progress</h2>
+        <!-- On a shared site one resume is made at a time; a second one waits. -->
+        <p class="note hidden" id="queue-note">
+          Someone else's resume is being made. Yours starts as soon as it is done.
+        </p>
         <ol class="steps" id="steps"></ol>
       </section>
 
@@ -941,6 +1016,8 @@
                   and roll back — a button that always fails is worse than none.
                 -->
                 <button class="btn-danger hidden" id="delete-file">Remove</button>
+                <!-- Accounts only: every save is kept, and this brings one back. -->
+                <button type="button" class="ghost account-only" id="file-history">Earlier versions</button>
                 <button class="cta" id="save-file" disabled>Save</button>
               </div>
               <div id="editor-message"></div>
@@ -952,7 +1029,8 @@
               <p class="note" id="editor-note">
                 The whole profile is validated before anything is written, so a save that
                 would break it is refused and the file on disk is left untouched.
-                Every save keeps a timestamped backup.
+                <span class="local-only">Every save keeps a timestamped backup.</span>
+                <span class="account-only">Every save is kept, and <b>Earlier versions</b> brings one back.</span>
               </p>
             </div>
           </div>
@@ -1008,8 +1086,12 @@
           in it belongs to a made-up person, so read it rather than edit it.
         </p>
         <p>
-          What you write stays on this computer and is never uploaded anywhere except when you
-          ask for a resume. Every save keeps a dated backup, and a save that would break something
+          <span class="local-only">What you write stays on this computer and is never uploaded
+          anywhere except when you ask for a resume. Every save keeps a dated backup,</span>
+          <span class="account-only">What you write is saved to your account, where nobody else who
+          signs in can see it, and goes to the AI provider only when you ask for a resume. Every
+          save is kept,</span>
+          and a save that would break something
           is refused before anything is written, so you cannot lose work by mistyping.
         </p>
 
@@ -1149,8 +1231,8 @@
         <p>
           Open a job, project, leadership role, publication or narrative and use
           <strong>Remove</strong> in the editor bar. It
-          says how many achievements go with the file before it does anything, and keeps a
-          timestamped copy in the backups folder either way.
+          says how many achievements go with the file before it does anything<span class="local-only">,
+          and keeps a timestamped copy in the backups folder either way</span>.
         </p>
         <p>
           Your name and your Skills table have no Remove button: the profile will not load without
@@ -1196,16 +1278,34 @@
       <section class="panel">
         <p class="panel-title">Applications sent</p>
         <p class="panel-lede">
-          Written automatically whenever a run finishes. This is the only thing here that cannot be
-          rebuilt from your career file, so it is worth keeping.
+          <span class="local-only">Written automatically whenever a run finishes. This is the only
+          thing here that cannot be rebuilt from your career file, so it is worth keeping.</span>
+          <span class="account-only">Every resume you make is listed here, and can be downloaded
+          again.</span>
         </p>
         <div id="apps-body"></div>
       </section>
     </main>
   </div>
 
+  <!-- ============================================================ PEOPLE -->
+  <!-- The owner's tab, in multi-user mode: who has signed in, and who gets in. -->
+  <div role="tabpanel" id="panel-admin" aria-labelledby="tab-admin" tabindex="0" class="hidden">
+    <main style="padding-top:26px">
+      <section class="panel">
+        <p class="panel-title">People</p>
+        <p class="panel-lede">
+          Everyone who has signed in. Nobody can use the site until you let them in, and taking
+          access away works on their next click.
+        </p>
+        <div id="people-body"></div>
+      </section>
+    </main>
+  </div>
+
   <footer>
-    <span>Everything stays on this computer, except the job ad and your career file, which are sent to the AI provider.</span>
+    <span class="local-only">Everything stays on this computer, except the job ad and your career file, which are sent to the AI provider.</span>
+    <span class="account-only">Your career file is saved to your account. It and the job ad go to the AI provider only when you make a resume.</span>
     <span>Jake's Resume template<span class="adv-only"> · compiled with tectonic</span></span>
   </footer>
 
@@ -1262,6 +1362,8 @@ const TABS = ["tailor", "profile", "chat", "guide", "history"];
 let source = null;
 let activeProfile = "profile.example";
 let profileOptions = [];
+// Who is signed in, in multi-user mode; null on the local tool. See loadAccount().
+let account = null;
 
 /* --------------------------------------------------------------- tabs */
 
@@ -1287,6 +1389,8 @@ async function selectTab(name) {
     button.tabIndex = on ? 0 : -1;
     panel.classList.toggle("hidden", !on);
   }
+  // Fetched on arrival rather than once: the point of the tab is who is waiting now.
+  if (name === "admin") loadPeople();
   // The hash makes a tab linkable and survives a reload, which matters here
   // because reading the Guide and editing YAML is an alt-tab loop.
   if (location.hash.slice(1) !== name) history.replaceState(null, "", `#${name}`);
@@ -1606,8 +1710,12 @@ function setupHtml() {
         <li><strong>Paste a job ad on the Create Resume tab.</strong> It picks what fits and
           typesets a page.</li>
       </ol>
-      <p>Your details stay on this computer. Nothing is uploaded except when you ask for a
-        resume, and then only to the AI provider.</p>
+      ${account
+        ? `<p>Your details are saved to your account so you can come back to them. Nobody else
+             who signs in can see them. They go to the AI provider only when you make a resume,
+             and deleting your account removes all of it.</p>`
+        : `<p>Your details stay on this computer. Nothing is uploaded except when you ask for a
+             resume, and then only to the AI provider.</p>`}
       <button class="cta" id="create-profile" style="margin-left:0">Create my file</button>
     </div>`;
 }
@@ -1616,7 +1724,25 @@ function setupHtml() {
 
 async function loadProfileSummary() {
   try {
-    const p = await (await fetch(`/api/profile?profile=${encodeURIComponent(activeProfile)}`)).json();
+    const response = await fetch(`/api/profile?profile=${encodeURIComponent(activeProfile)}`);
+    if (!response.ok) {
+      // No file yet -- the normal state of a brand-new account -- or one that
+      // does not load. Either way a run could only fail, so say what to do
+      // instead of printing "undefined achievements".
+      const none = !profileOptions.some((o) => o.loads);
+      $("facts").textContent = none ? "no career file yet" : "your career file does not load";
+      $("ready").className = "ready is-blocked";
+      $("ready-text").textContent = none ? "set up first" : "fix your file first";
+      $("run").disabled = true;
+      $("note").className = "note blocked";
+      $("note").innerHTML = none
+        ? "<strong>Start with your details.</strong> Make your career file on the " +
+          "<b>My information</b> tab — every line of a resume comes from it."
+        : "<strong>Your career file does not load.</strong> The <b>My information</b> " +
+          "tab says which part is wrong.";
+      return;
+    }
+    const p = await response.json();
     $("facts").innerHTML =
       `${esc(p.name)} · <b>${p.bullets}</b> achievements · <b>${p.experience}</b> jobs · ` +
       `<b>${p.projects}</b> projects`;
@@ -1641,7 +1767,17 @@ async function loadProfileSummary() {
     if (!p.has_credentials) missing.push(`${p.credentials_var} is not set`);
     if (!p.has_compiler) missing.push("no LaTeX compiler on PATH");
 
-    if (missing.length) {
+    if (missing.length && account) {
+      // On a shared site these are the owner's to fix, not the visitor's; the
+      // variable names would only be noise to them.
+      $("ready").className = "ready is-blocked";
+      $("ready-text").textContent = "site not ready";
+      $("run").disabled = true;
+      $("note").className = "note blocked";
+      $("note").innerHTML =
+        "<strong>Resumes cannot be made right now.</strong> The site is missing a piece of " +
+        "its setup, which the owner needs to fix. Everything else here still works.";
+    } else if (missing.length) {
       $("ready").className = "ready is-blocked";
       $("ready-text").textContent = missing.length + " blocker" + (missing.length > 1 ? "s" : "");
       $("run").disabled = true;
@@ -1651,14 +1787,24 @@ async function loadProfileSummary() {
         (p.has_credentials ? "" : `Set <code>${esc(p.credentials_var)}</code> in the shell you start the server from, then reload. `) +
         (p.has_compiler ? "" : "Install <code>tectonic</code>, or set <code>RESUME_AGENT_TECTONIC</code> to its path. ") +
         "Everything else on this page works without either.";
+    } else if (account && p.runs_left_today === 0) {
+      $("ready").className = "ready is-blocked";
+      $("ready-text").textContent = "none left today";
+      $("run").disabled = true;
+      $("note").className = "note blocked";
+      $("note").innerHTML =
+        "<strong>That is today's resumes made.</strong> You can make more tomorrow; " +
+        "everything else here still works.";
     } else {
       $("ready").className = "ready is-ready";
-      $("ready-text").textContent = `ready · ${p.provider}`;
+      $("ready-text").textContent = account
+        ? `ready · ${p.runs_left_today} left today`
+        : `ready · ${p.provider}`;
       // Set explicitly rather than left alone: a function that disables in one
       // branch and is silent in the other only works while it is called once.
       $("run").disabled = false;
       $("note").className = "note";
-      $("note").innerHTML = COST_NOTE;
+      $("note").innerHTML = account ? ACCOUNT_NOTE : COST_NOTE;
       showActiveProfile();
     }
   } catch {
@@ -1669,6 +1815,11 @@ async function loadProfileSummary() {
 }
 
 const COST_NOTE = $("note").innerHTML;
+// The cost note is the owner's business on a shared site, and the profile name
+// it prints is an account id there, so friends get this instead.
+const ACCOUNT_NOTE =
+  "Built only from your career file on the <b>My information</b> tab. " +
+  "The first run for a new posting takes about a minute.";
 
 /* ------------------------------------------------------------- history */
 
@@ -1681,22 +1832,30 @@ async function loadApplications() {
   $("tab-history-count").textContent = rows.length ? `(${rows.length})` : "";
 
   if (!rows.length) {
-    $("apps-body").innerHTML =
-      `<p class="empty">Nothing sent yet. A row is written here automatically when a run finishes,
+    $("apps-body").innerHTML = account
+      ? `<p class="empty">Nothing yet. Every resume you make is listed here, and you can
+         download it again later.</p>`
+      : `<p class="empty">Nothing sent yet. A row is written here automatically when a run finishes,
        recording the job, how well you matched it, and which achievements went out — so later you
        can ask which ones appear in the applications that got callbacks.</p>`;
     return;
   }
 
+  // With accounts the last column is the resume itself: the PDF is kept, and
+  // outcomes are recorded only from the command line of the local tool.
+  const last = account
+    ? (r) => r.has_pdf
+      ? `<a href="/api/runs/${encodeURIComponent(r.run_id)}/pdf">Download</a>` : "—"
+    : (r) => esc(r.outcome ?? "—");
   $("apps-body").innerHTML =
     `<table class="apps"><thead><tr><th>Date</th><th>Company</th><th>Role</th>` +
-    `<th class="num">Fit</th><th class="num">Outcome</th></tr></thead><tbody>` +
+    `<th class="num">Fit</th><th class="num">${account ? "Resume" : "Outcome"}</th></tr></thead><tbody>` +
     rows.map((r) => `<tr>` +
       `<td>${esc(r.applied_on.slice(0, 10))}</td>` +
       `<td>${esc(r.company)}</td>` +
       `<td>${esc(r.title)}</td>` +
       `<td class="num">${r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—"}</td>` +
-      `<td class="num">${esc(r.outcome ?? "—")}</td></tr>`).join("") +
+      `<td class="num">${last(r)}</td></tr>`).join("") +
     `</tbody></table>`;
 }
 
@@ -1794,6 +1953,7 @@ async function start() {
   $("letterbox").classList.add("hidden");
   resetRail();
   $("run-status").textContent = "starting…";
+  $("queue-note").classList.add("hidden");
   if (source) source.close();
 
   const res = await fetch("/api/runs", {
@@ -1810,7 +1970,19 @@ async function start() {
       summary: $("summary").checked,
     }),
   });
-  if (!res.ok) { log("error", "could not start", await explain(res)); finish(); return; }
+  if (!res.ok) {
+    const why = await explain(res);
+    log("error", "could not start", why);
+    // The log is behind the Advanced switch, so a refusal -- today's limit
+    // reached, most likely -- also goes where everyone can read it. Without
+    // this the button simply reset and nothing said why.
+    $("steps-panel").classList.add("hidden");
+    $("result").classList.remove("hidden");
+    $("result-body").innerHTML = `<div class="errors">${esc(why)}</div>`;
+    finish();
+    if (account) loadProfileSummary();
+    return;
+  }
 
   const { run_id } = await res.json();
 
@@ -1818,6 +1990,8 @@ async function start() {
   source.onmessage = (e) => {
     const ev = JSON.parse(e.data);
     log(ev.kind, ev.name, ev.detail, ev.elapsed_s);
+    if (ev.kind === "status" && ev.name === "queued") $("queue-note").classList.remove("hidden");
+    if (ev.kind === "node_start") $("queue-note").classList.add("hidden");
     if (ev.kind === "node_start") { markNode(ev.name, "active"); announce(ev.name); }
     if (ev.kind === "node_end") markNode(ev.name, "done");
   };
@@ -1828,6 +2002,7 @@ async function start() {
     finish();
     renderResult(await (await fetch(`/api/runs/${run_id}`)).json());
     loadApplications();
+    if (account) loadProfileSummary();  // one fewer left today
   });
   source.onerror = () => {
     source.close();
@@ -2261,7 +2436,11 @@ async function saveFile() {
 
     await openFile(editor.path);       // re-read: the file is the source of truth
     // After the re-read, which clears the message pane on its way in.
-    setEditorMessage(`Saved. Previous version kept at ${result.backup}`, true);
+    // With accounts there is no path to show: the previous version is in the
+    // database, one click away under Earlier versions.
+    setEditorMessage(result.backup
+      ? `Saved. Previous version kept at ${result.backup}`
+      : "Saved. The previous version is under Earlier versions.", true);
     await Promise.all([loadProfiles(), loadProfileSummary()]);
   } catch (e) {
     setEditorMessage(e.message, false);
@@ -2297,7 +2476,9 @@ async function deleteFile() {
     : "";
   if (!(await askConfirm({
     title: `Remove ${editor.path}?`,
-    body: `This deletes it${goes}. A dated copy is kept in the backups folder.`,
+    body: `This deletes it${goes}.` + (account
+      ? " It cannot be brought back from here."
+      : " A dated copy is kept in the backups folder."),
     ok: "Remove",
     danger: true,
   }))) return;
@@ -2322,7 +2503,9 @@ async function deleteFile() {
     // `loadFileList` renders as well as fetches, and the shell it draws into
     // only exists again after the restore above.
     await Promise.all([loadFileList(), loadProfiles(), loadProfileSummary()]);
-    setEditorMessage(`Removed ${removed}. A copy is kept at ${result.backup}`, true);
+    setEditorMessage(result.backup
+      ? `Removed ${removed}. A copy is kept at ${result.backup}`
+      : `Removed ${removed}.`, true);
   } catch (e) {
     setEditorMessage(e.message, false);
   } finally {
@@ -2354,6 +2537,83 @@ async function addEntry(role) {
   } catch (e) {
     setEditorMessage(e.message, false);
   }
+}
+
+/* Accounts only. Every save is kept in the database, newest first, and the
+   newest is the file as it is open now -- so the choices are everything after
+   it. Bringing one back is an ordinary save of its text: validated like
+   anything typed, and itself a new version, so nothing is ever lost by it. */
+async function showFileHistory() {
+  if (!editor.path) return;
+  if (isDirty() && !(await askConfirm({
+    title: "Discard your changes?",
+    body: `You have edits to ${editor.path} that have not been saved.`,
+    ok: "Discard",
+    danger: true,
+  }))) return;
+
+  let versions;
+  try {
+    const response = await fetch(`/api/profile/history?path=${encodeURIComponent(editor.path)}`);
+    if (!response.ok) throw new Error(await explain(response));
+    versions = await response.json();
+  } catch (e) {
+    setEditorMessage(e.message, false);
+    return;
+  }
+
+  const earlier = versions.slice(1).filter((v) => !v.deleted);
+  if (!earlier.length) {
+    await openModal({
+      title: "No earlier versions",
+      body: `<p>${esc(editor.path)} has not changed since it was made.</p>`,
+    });
+    return;
+  }
+
+  const accepted = await openModal({
+    title: "Earlier versions",
+    ok: "Bring this one back",
+    body: `<p>Bringing one back saves it as the newest version, so what is there now is
+        not lost.</p>` +
+      earlier.map((v, i) => `
+        <label class="choice">
+          <input type="radio" name="version" value="${i}"${i === 0 ? " checked" : ""}>
+          <span><b>${esc(when(v.created_at))}</b>
+            <details><summary>Show</summary><pre class="version-text">${esc(v.text)}</pre></details>
+          </span>
+        </label>`).join(""),
+  });
+  if (!accepted) return;
+  const chosen = earlier[Number(
+    $("modal-body").querySelector('input[name="version"]:checked').value)];
+
+  try {
+    const response = await fetch("/api/profile/file", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profile: activeProfile, path: editor.path, text: chosen.text }),
+    });
+    if (!response.ok) throw new Error(await explain(response));
+    const result = await response.json();
+    if (!result.ok) { setEditorMessage(result.error, false); return; }
+
+    editor.saved = editor.raw ? $("editor-text").value : JSON.stringify(editor.doc.data);
+    await openFile(editor.path);
+    setEditorMessage(`Brought back the version from ${when(chosen.created_at)}.`, true);
+    await Promise.all([loadProfiles(), loadProfileSummary()]);
+  } catch (e) {
+    setEditorMessage(e.message, false);
+  }
+}
+
+/* "2026-09-25T10:39:03.529842Z" as the reader's own date and time. Trimmed to
+   milliseconds first: not every browser parses six fractional digits. */
+function when(iso) {
+  const date = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
+  return isNaN(date) ? iso : date.toLocaleString(undefined, {
+    dateStyle: "medium", timeStyle: "short",
+  });
 }
 
 function setRawMode(on) {
@@ -2439,14 +2699,20 @@ async function createProfile() {
   const button = $("create-from-example") || $("create-profile");
   if (button) { button.disabled = true; button.textContent = "Creating…"; }
   try {
+    // No `source`: the server's default is the worked example, which is what
+    // the second choice above promises. Sending the active profile used to copy
+    // whatever was open -- your own file, if you pressed New while viewing it.
     const response = await fetch("/api/profile/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, source: activeProfile, mode, display_name: who.trim() }),
+      body: JSON.stringify({ name, mode, display_name: who.trim() }),
     });
     if (!response.ok) throw new Error(await explain(response));
-    safeSet("resume-agent.profile", name);
-    activeProfile = name;
+    // The server's name, not ours: with accounts it is the account's own, and
+    // the requested one is not used.
+    const created = (await response.json()).profile;
+    safeSet("resume-agent.profile", created);
+    activeProfile = created;
     await loadProfiles();
     await loadProfileSummary();
     restoreEditorShell();
@@ -2594,8 +2860,9 @@ function renderProposal(turn) {
   const removalNote = removals
     ? `${warning ? " " : ""}` +
       (removals === 1
-        ? "One item deletes a file — a copy is kept in the backups folder."
-        : `${removals} items delete files — a copy of each is kept in the backups folder.`)
+        ? "One item deletes a file" + (account ? "." : " — a copy is kept in the backups folder.")
+        : `${removals} items delete files` +
+          (account ? "." : " — a copy of each is kept in the backups folder."))
     : "";
 
   const card = chatLine("proposal", `
@@ -2634,7 +2901,8 @@ async function applyProposal(turnId, card) {
 
     card.className = "ok-note";
     card.textContent = turn.applied.length
-      ? `Done \u2014 ${turn.applied.join("; ")}. Every change kept a backup.`
+      ? `Done \u2014 ${turn.applied.join("; ")}.` +
+        (account ? " Earlier versions are kept." : " Every change kept a backup.")
       : "Nothing selected, so nothing was written.";
 
     // The profile changed, so everything derived from it is stale.
@@ -2646,6 +2914,162 @@ async function applyProposal(turnId, card) {
     card.insertAdjacentHTML("beforeend", `<div class="errors">${esc(e.message)}</div>`);
   }
 }
+
+/* ------------------------------------------------------------- accounts */
+
+/* Who is signed in -- when this server has accounts at all.
+
+   `/api/me` exists only in multi-user mode, so a 404 is the answer "this is the
+   local tool": no sign-in, and nothing in this section applies. A 401 is
+   signed out; anything other than approved is waiting or turned away. In
+   those cases the gate stands in for the app, because every call the app would
+   make is refused anyway.
+
+   Resolves to "local", "gate" or "app". */
+async function loadAccount() {
+  let response;
+  try { response = await fetch("/api/me"); } catch { return "local"; }
+  if (response.status === 404) return "local";
+
+  document.body.dataset.accounts = "1";
+  if (response.status === 401) { showGate("signed-out"); return "gate"; }
+  if (!response.ok) { showGate("broken"); return "gate"; }
+
+  account = await response.json();
+  if (account.status !== "approved") { showGate(account.status); return "gate"; }
+
+  $("account-email").textContent = account.email;
+  $("account").classList.remove("hidden");
+  if (account.is_admin) {
+    TABS.push("admin");
+    $("tab-admin").classList.remove("hidden");
+    loadPeople();  // for the waiting count on the tab
+  }
+  return "app";
+}
+
+function showGate(kind) {
+  document.body.dataset.gate = kind;
+  const who = account ? `Signed in as <b>${esc(account.email)}</b>. ` : "";
+  const out = `<button type="button" class="ghost" id="gate-sign-out">Sign out</button>`;
+  $("gate").innerHTML = {
+    "signed-out": `
+      <h1>Resumes made only from what you have actually done.</h1>
+      <p class="lede">Write down your jobs, projects and results once. Then paste any job ad and
+        get a one-page resume built from them — reworded to fit the job, never invented.</p>
+      <p class="lede">Accounts are approved by hand. Sign in, and you can start once yours
+        has been approved.</p>
+      <form action="/auth/login" method="get">
+        <button type="submit" class="cta">Sign in with Google</button>
+      </form>`,
+    pending: `
+      <h1>You're on the list.</h1>
+      <p class="lede">${who}Accounts are approved by hand, and yours is waiting. Check back
+        later — this page opens up as soon as you have been let in.</p>
+      ${out}`,
+    rejected: `
+      <h1>This account doesn't have access.</h1>
+      <p class="lede">${who}If that seems wrong, ask the person who sent you the link.</p>
+      ${out}`,
+    broken: `
+      <h1>Something went wrong on the server.</h1>
+      <p class="lede">It is not you. Try again in a minute.</p>`,
+  }[kind];
+  $("gate").classList.remove("hidden");
+  $("gate-sign-out")?.addEventListener("click", signOut);
+}
+
+async function signOut() {
+  await fetch("/auth/logout", { method: "POST" });
+  location.href = "/";
+}
+
+async function deleteAccount() {
+  $("account").open = false;
+  if (!(await askConfirm({
+    title: "Delete your account?",
+    body: "This removes your account, your career file with every earlier version of it, " +
+          "and every resume you have made here. It cannot be undone.",
+    ok: "Delete everything",
+    danger: true,
+  }))) return;
+
+  const response = await fetch("/api/me", {
+    method: "DELETE",
+    // Every change on this site must be JSON: it is what stops another site
+    // from submitting a form here with your cookie attached.
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!response.ok) {
+    await openModal({
+      title: "Your account was not deleted",
+      body: `<p>${esc(await explain(response))}</p>`,
+    });
+    return;
+  }
+  location.href = "/";
+}
+
+/* The owner's list. Waiting first, which is how the server sorts it. */
+const STATUS_WORDS = { pending: "waiting", approved: "has access", rejected: "no access" };
+
+async function loadPeople() {
+  let people;
+  try {
+    const response = await fetch("/api/admin/users");
+    if (!response.ok) throw new Error(await explain(response));
+    people = await response.json();
+  } catch (e) {
+    $("people-body").innerHTML = `<div class="errors">${esc(e.message)}</div>`;
+    return;
+  }
+
+  const waiting = people.filter((p) => p.status === "pending").length;
+  $("tab-admin-count").textContent = waiting ? `(${waiting})` : "";
+
+  const actions = (p) => {
+    if (p.id === account.id) return `<span class="status-approved">you</span>`;
+    const button = (status, label, cls = "ghost") =>
+      `<button type="button" class="${cls}" data-decide="${status}" data-id="${esc(p.id)}">${label}</button>`;
+    if (p.status === "pending") {
+      return button("approved", "Let in", "cta") + button("rejected", "Turn away");
+    }
+    if (p.status === "approved") return button("rejected", "Take away access", "btn-danger");
+    return button("approved", "Let in");
+  };
+
+  $("people-body").innerHTML = people.length
+    ? `<div class="people-wrap"><table class="apps"><thead><tr><th>Email</th><th>Name</th>` +
+      `<th>Signed up</th><th>Status</th><th></th></tr></thead><tbody>` +
+      people.map((p) => `<tr>` +
+        `<td>${esc(p.email)}</td>` +
+        `<td>${esc(p.name)}</td>` +
+        `<td>${esc(p.created_at.slice(0, 10))}</td>` +
+        `<td class="status-${esc(p.status)}">${STATUS_WORDS[p.status] || esc(p.status)}</td>` +
+        `<td class="actions">${actions(p)}</td></tr>`).join("") +
+      `</tbody></table></div>`
+    : `<p class="empty">Nobody has signed in yet. Send someone the link; they will appear here.</p>`;
+}
+
+$("people-body").addEventListener("click", async (e) => {
+  const button = e.target.closest("button[data-decide]");
+  if (!button) return;
+  button.disabled = true;
+  const response = await fetch(
+    `/api/admin/users/${encodeURIComponent(button.dataset.id)}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: button.dataset.decide }),
+    });
+  if (!response.ok) {
+    $("people-body").insertAdjacentHTML("afterbegin",
+      `<div class="errors">${esc(await explain(response))}</div>`);
+    button.disabled = false;
+    return;
+  }
+  await loadPeople();
+});
 
 /* ----------------------------------------------------------------- init */
 
@@ -2681,6 +3105,9 @@ function wireEditorControls() {
 }
 wireEditorControls();
 $("new-profile").addEventListener("click", createProfile);
+$("file-history").addEventListener("click", showFileHistory);
+$("sign-out").addEventListener("click", signOut);
+$("delete-account").addEventListener("click", deleteAccount);
 $("chat-send").addEventListener("click", sendChat);
 // Ctrl/Cmd+Enter sends, matching the posting box on the Tailor tab. Plain Enter
 // makes a newline, because dictation is naturally multi-paragraph.
@@ -2693,10 +3120,19 @@ $("profile-modes").querySelectorAll("button").forEach((button) => {
 // The browser's own guard, for the close-tab case a confirm() cannot cover.
 window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 
-wireTabs();
 buildRail();
-loadProfiles().then(loadProfileSummary);
-loadApplications();
+boot();
+
+/* The account decides what there is to show, so it is asked first: the tab
+   list depends on it (the owner has one more), and signed out there is nothing
+   else worth fetching. Locally it answers at once and changes nothing. */
+async function boot() {
+  const shown = await loadAccount();
+  if (shown === "gate") return;
+  wireTabs();
+  loadProfiles().then(loadProfileSummary);
+  loadApplications();
+}
 </script>
 </body>
 </html>

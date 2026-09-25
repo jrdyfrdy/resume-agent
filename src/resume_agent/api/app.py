@@ -64,6 +64,7 @@ from resume_agent.api.models import (
     CreateEntryRequest,
     CreateProfileRequest,
     DeleteFileRequest,
+    FileVersion,
     FormDocument,
     NodeEvent,
     ProfileDetail,
@@ -557,6 +558,22 @@ def create_app(
             except ProfileWriteError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
         return SaveResult(ok=True, backup=backup_shown(backup))
+
+    if multi is not None:
+
+        @app.get("/api/profile/history", response_model=list[FileVersion])
+        async def profile_history(http: Request, path: str) -> list[FileVersion]:
+            """Earlier versions of one file, newest first -- the one that is open
+            now at the top. Keyed on the account, so no path finds anyone else's.
+
+            Bringing one back is an ordinary save of its text, validated like
+            anything typed, so it becomes the newest version rather than
+            rewriting history.
+            """
+            rows = await asyncio.to_thread(
+                multi.db.profile_history, signed_in_user(http).id, path
+            )
+            return [FileVersion(**row) for row in rows]
 
     @app.post("/api/profile/create", response_model=ProfileFileList, status_code=201)
     async def create_profile(request: CreateProfileRequest, http: Request) -> ProfileFileList:
