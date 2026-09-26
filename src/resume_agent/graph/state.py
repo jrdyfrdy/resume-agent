@@ -98,6 +98,8 @@ class AgentState(TypedDict, total=False):
     candidates: list[str]
     evidence: list[EvidenceMatch]
     fit_report: FitReport | None
+    # Who scored the evidence -- the model, or Jev (M11) -- for run.json.
+    scoring: dict
     selected: list[str]  # bullet ids
     tailored: list[TailoredBullet]
     cover_letter: CoverLetter | None

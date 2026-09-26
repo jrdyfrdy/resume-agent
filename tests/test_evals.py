@@ -21,7 +21,11 @@ from typing import Any
 import pytest
 from langchain_core.language_models import BaseChatModel
 
-from evals.checks import MIN_MUST_HAVE_COVERAGE, run_deterministic_checks
+from evals.checks import (
+    MIN_MUST_HAVE_COVERAGE,
+    DeterministicResult,
+    run_deterministic_checks,
+)
 from evals.judges.resume_judge import DIMENSIONS, JudgeScores, judge_resume
 from evals.run_eval import (
     REGRESSION_THRESHOLD,
@@ -446,3 +450,72 @@ def test_normal_runs_are_unaffected_by_the_variant_machinery() -> None:
     os.environ.pop(PROMPT_OVERRIDE_ENV_VAR, None)
     assert prompt_path("tailor_bullets").name == "tailor_bullets.md"
     assert "You may rephrase. You may not add facts." in load_prompt("tailor_bullets")
+
+
+# ===========================================================================
+# M11 J3: scoring by Jev, and the comparison that decides the default
+# ===========================================================================
+
+
+def test_choosing_jev_needs_its_own_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    from evals.run_eval import _choose_scorer  # noqa: PLC0415
+
+    monkeypatch.delenv("RESUME_AGENT_JEV_API_KEY", raising=False)
+
+    with pytest.raises(SystemExit, match="RESUME_AGENT_JEV_API_KEY"):
+        _choose_scorer("jev")
+
+
+def test_choosing_a_scorer_sets_and_clears_the_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    from evals.run_eval import _choose_scorer  # noqa: PLC0415
+
+    monkeypatch.setenv("RESUME_AGENT_JEV_API_KEY", "sk-or-test")
+    monkeypatch.delenv("RESUME_AGENT_JEV_SCORING", raising=False)
+
+    _choose_scorer("jev")
+    assert os.environ["RESUME_AGENT_JEV_SCORING"] == "1"
+
+    _choose_scorer("llm")
+    assert "RESUME_AGENT_JEV_SCORING" not in os.environ
+
+
+def test_the_comparison_shows_what_scoring_changed() -> None:
+    """Scoring decides what gets selected, so the comparison has to show the
+    picks and the coverage, not only the judge score."""
+    from evals.run_eval import compare  # noqa: PLC0415
+
+    before = {"decisions": "llm", "mean_judge_score": 3.8, "cases": [{
+        "jd_name": "mid", "covered": 5, "selected": ["a", "b", "c", "d"],
+        "judge": {"mean": 3.8}, "scoring": {"by": "model", "cached": True},
+    }]}
+    after = {"decisions": "jev", "mean_judge_score": 3.75, "cases": [{
+        "jd_name": "mid", "covered": 6, "selected": ["a", "b", "c", "e"],
+        "judge": {"mean": 3.75}, "scoring": {"by": "jev", "cached": False, "seconds": 1.4},
+    }]}
+
+    text = compare(before, after)
+
+    assert "llm -> jev" in text
+    assert "5->6" in text, "requirements covered, before and after"
+    assert "60%" in text, "3 of the 5 distinct picks are shared"
+    assert "3.80->3.75" in text
+    assert "cached->1.4" in text
+    assert "3.800 -> 3.750" in text
+    assert "within 0.1" in text, "the rule for switching the default is printed with it"
+
+
+def test_a_report_records_who_scored(tmp_path: Path) -> None:
+    report = EvalReport(variant="baseline", ran_at="now", decisions="jev")
+    report.cases.append(CaseResult(
+        jd_name="mid",
+        deterministic=DeterministicResult(
+            jd_name="mid", compiled=True, page_count=1, overfull_boxes=0, first_error=None
+        ),
+        scoring={"by": "jev", "seconds": 1.2}, covered=4, selected=["a"],
+    ))
+
+    saved = json.loads(json.dumps(report.to_dict()))
+
+    assert saved["decisions"] == "jev"
+    assert saved["cases"][0]["scoring"]["by"] == "jev"
+    assert saved["cases"][0]["covered"] == 4

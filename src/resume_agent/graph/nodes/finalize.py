@@ -118,6 +118,8 @@ def finalize(state: AgentState) -> dict:
         "page_count": state.get("page_count"),
         "grounding_attempts": state.get("grounding_attempts", 0),
         "layout_attempts": state.get("layout_attempts", 0),
+        # Which scorer produced the evidence, and what Jev used if it was Jev.
+        "scoring": state.get("scoring"),
         "critiques": state.get("critiques", []),
         "errors": state.get("errors", []),
     }

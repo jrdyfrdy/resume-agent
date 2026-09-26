@@ -113,10 +113,20 @@ def node_retrieve(state: AgentState) -> dict:
 def node_score(state: AgentState, llm: BaseChatModel | None = None) -> dict:
     profile = _profile(state)
     candidates = state.get("candidates", [])
+    scoring: dict = {}
     matches = score_fit(
-        state["job_spec"], candidates, profile, llm=llm, use_cache=state["options"].use_cache
+        state["job_spec"],
+        candidates,
+        profile,
+        llm=llm,
+        use_cache=state["options"].use_cache,
+        details=scoring,
     )
-    return {"evidence": matches, "fit_report": build_fit_report(state["job_spec"], matches)}
+    return {
+        "evidence": matches,
+        "fit_report": build_fit_report(state["job_spec"], matches),
+        "scoring": scoring,
+    }
 
 
 def node_select(state: AgentState) -> dict:

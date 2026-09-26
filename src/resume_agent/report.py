@@ -81,7 +81,7 @@ def render_fit_report(result: AnalysisResult) -> None:
         typer.secho(f"Partial evidence ({len(fit.partial)})", fg=typer.colors.YELLOW)
         for match in fit.partial:
             typer.echo(f"  {match.relevance:.2f}  {match.requirement_text}")
-            typer.secho(f"        {match.rationale}", fg=typer.colors.BRIGHT_BLACK)
+            typer.secho(f"        {_why(match)}", fg=typer.colors.BRIGHT_BLACK)
         typer.echo()
 
     if fit.covered:
@@ -89,7 +89,7 @@ def render_fit_report(result: AnalysisResult) -> None:
         for match in fit.covered:
             typer.echo(f"  {match.relevance:.2f}  {match.requirement_text}")
             typer.secho(
-                f"        {match.bullet_id}: {match.rationale}", fg=typer.colors.BRIGHT_BLACK
+                f"        {match.bullet_id}: {_why(match)}", fg=typer.colors.BRIGHT_BLACK
             )
         typer.echo()
 
@@ -121,3 +121,8 @@ def _render_selection(result: AnalysisResult) -> None:
         for bullet_id, reason in sorted(selection.rejected.items()):
             typer.secho(f"    {bullet_id}: {reason}", fg=typer.colors.BRIGHT_BLACK)
     typer.echo()
+
+
+def _why(match) -> str:
+    """The rationale, or who scored it: Jev rates without explaining (M11)."""
+    return match.rationale or "(scored by Jev, which rates without explaining)"

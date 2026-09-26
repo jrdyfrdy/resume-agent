@@ -74,6 +74,11 @@ class CaseResult:
     deterministic: DeterministicResult
     judge: JudgeScores | None = None
     error: str | None = None
+    # M11: who scored the evidence, how long scoring took, and what it led to --
+    # the comparison `--compare` makes between `--decisions llm` and `jev`.
+    scoring: dict = field(default_factory=dict)
+    covered: int | None = None
+    selected: list[str] = field(default_factory=list)
 
     @property
     def mean_score(self) -> float | None:
@@ -85,6 +90,7 @@ class EvalReport:
     variant: str
     ran_at: str
     cases: list[CaseResult] = field(default_factory=list)
+    decisions: str = "llm"
 
     @property
     def scored(self) -> list[CaseResult]:
@@ -115,6 +121,7 @@ class EvalReport:
     def to_dict(self) -> dict:
         return {
             "variant": self.variant,
+            "decisions": self.decisions,
             "ran_at": self.ran_at,
             "mean_judge_score": self.mean_judge_score,
             "deterministic_pass_rate": self.deterministic_pass_rate,
@@ -126,6 +133,9 @@ class EvalReport:
                     "judge": c.judge.as_dict() if c.judge else None,
                     "reasoning": c.judge.reasoning if c.judge else None,
                     "error": c.error,
+                    "scoring": c.scoring,
+                    "covered": c.covered,
+                    "selected": c.selected,
                 }
                 for c in self.cases
             ],
@@ -142,8 +152,15 @@ def run_eval(
     variant: str | None = None,
     out_dir: Path | None = None,
     judge: bool = True,
+    decisions: str = "llm",
 ) -> EvalReport:
-    """Run every JD through the graph, then score the result."""
+    """Run every JD through the graph, then score the result.
+
+    `decisions="jev"` scores the evidence with Jev instead of the model (M11
+    J3); everything else about the run is the same, so `--compare` can put the
+    two side by side.
+    """
+    _choose_scorer(decisions)
     if variant:
         overrides = VARIANTS.get(variant)
         if overrides is None:
@@ -153,7 +170,9 @@ def run_eval(
         )
 
     report = EvalReport(
-        variant=variant or "baseline", ran_at=datetime.now().isoformat(timespec="seconds")
+        variant=variant or "baseline",
+        ran_at=datetime.now().isoformat(timespec="seconds"),
+        decisions=decisions,
     )
     graph = build_graph()
     out_dir = out_dir or (RESULTS_DIR / "runs")
@@ -195,13 +214,81 @@ def run_eval(
             if judge and state.get("job_spec")
             else None
         )
-        report.cases.append(CaseResult(jd_name=name, deterministic=deterministic, judge=scores))
+        fit = state.get("fit_report")
+        report.cases.append(
+            CaseResult(
+                jd_name=name,
+                deterministic=deterministic,
+                judge=scores,
+                scoring=state.get("scoring") or {},
+                covered=len(fit.covered) if fit else None,
+                selected=list(state.get("selected", [])),
+            )
+        )
         print(
             f"  {name}: {'pass' if deterministic.passed else 'FAIL'}"
             f"{f' | judge {scores.mean:.2f}' if scores else ''}"
+            f" | scored by {(state.get('scoring') or {}).get('by', '?')}"
         )
 
     return report
+
+
+def _choose_scorer(decisions: str) -> None:
+    """Point the `score` node at the model or at Jev for this process."""
+    from resume_agent import decisions as jev  # noqa: PLC0415
+
+    if decisions not in ("llm", "jev"):
+        raise SystemExit(f"--decisions must be llm or jev, not {decisions!r}")
+    if decisions == "jev":
+        if not jev.jev_enabled():
+            raise SystemExit(f"--decisions jev needs {jev.API_KEY_ENV_VAR} set.")
+        os.environ[jev.SCORING_ENV_VAR] = "1"
+    else:
+        os.environ.pop(jev.SCORING_ENV_VAR, None)
+
+
+def compare(before: dict, after: dict) -> str:
+    """Two saved results side by side: the evidence `--decisions jev` has to give.
+
+    Scoring changes what gets *selected*, so the question is not only whether
+    the judge score holds but whether the same achievements go out, and whether
+    as many requirements are covered.
+    """
+    by_name = {c["jd_name"]: c for c in before["cases"]}
+    lines = [
+        "",
+        f"{before.get('decisions', '?')} -> {after.get('decisions', '?')}",
+        "",
+        f"{'jd':<28}{'covered':>9}{'same picks':>12}{'judge':>13}{'scoring s':>13}",
+        "-" * 75,
+    ]
+    for case in after["cases"]:
+        old = by_name.get(case["jd_name"])
+        if old is None:
+            continue
+        a, b = set(old.get("selected", [])), set(case.get("selected", []))
+        overlap = f"{len(a & b) / len(a | b):.0%}" if a | b else "-"
+        judge_a = (old.get("judge") or {}).get("mean")
+        judge_b = (case.get("judge") or {}).get("mean")
+        judge = f"{judge_a:.2f}->{judge_b:.2f}" if judge_a and judge_b else "-"
+        secs = [(c.get("scoring") or {}) for c in (old, case)]
+        seconds = "->".join(
+            "cached" if s.get("cached") else f"{s.get('seconds', 0):.1f}" for s in secs
+        )
+        lines.append(
+            f"{case['jd_name']:<28}{old.get('covered')!s:>4}->{case.get('covered')!s:<4}"
+            f"{overlap:>12}{judge:>13}{seconds:>13}"
+        )
+    lines += [
+        "-" * 75,
+        f"mean judge score: {before['mean_judge_score']:.3f} -> {after['mean_judge_score']:.3f}",
+        "",
+        "Switch the default only if the judge score holds within 0.1 and coverage "
+        "does not drop (M11 J3). For a fair time, run each with an empty "
+        "RESUME_AGENT_CACHE_DIR.",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +371,20 @@ def main() -> None:
     parser.add_argument("--no-judge", action="store_true", help="deterministic checks only (free)")
     parser.add_argument("--check-against", default=None, help="baseline JSON to gate against")
     parser.add_argument("--save-baseline", default=None, help="write the result as a baseline")
+    parser.add_argument(
+        "--decisions", default="llm", choices=["llm", "jev"],
+        help="who scores the evidence: the model (default) or Jev (M11)",
+    )
+    parser.add_argument(
+        "--compare", nargs=2, metavar=("BEFORE", "AFTER"), default=None,
+        help="print two saved results side by side and stop",
+    )
     args = parser.parse_args()
+
+    if args.compare:
+        before, after = (json.loads(Path(p).read_text(encoding="utf-8")) for p in args.compare)
+        print(compare(before, after))
+        return
 
     if not args.no_judge and not has_credentials():
         raise SystemExit(
@@ -296,12 +396,15 @@ def main() -> None:
     jd_paths = sorted(JD_DIR.glob("*.txt"))[: args.limit]
     print(f"Running {len(jd_paths)} JDs ({args.variant or 'baseline'})...")
 
-    report = run_eval(jd_paths, Path(args.profile), variant=args.variant, judge=not args.no_judge)
+    report = run_eval(
+        jd_paths, Path(args.profile), variant=args.variant, judge=not args.no_judge,
+        decisions=args.decisions,
+    )
     print(render_table(report))
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    results_path = RESULTS_DIR / f"{report.variant}-{stamp}.json"
+    results_path = RESULTS_DIR / f"{report.variant}-{report.decisions}-{stamp}.json"
     results_path.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     print(f"results: {results_path}")
 

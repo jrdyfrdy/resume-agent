@@ -45,11 +45,15 @@ from resume_agent.decisions.questions import (
 API_KEY_ENV_VAR = "RESUME_AGENT_JEV_API_KEY"
 BASE_URL_ENV_VAR = "RESUME_AGENT_JEV_BASE_URL"
 MODEL_ENV_VAR = "RESUME_AGENT_JEV_MODEL"
+# Scoring by Jev is a separate switch, off even when Jev is on: it changes what
+# gets selected, so it waits until the eval harness says it is as good (M11 J3).
+SCORING_ENV_VAR = "RESUME_AGENT_JEV_SCORING"
 
 __all__ = [
     "API_KEY_ENV_VAR",
     "BASE_URL_ENV_VAR",
     "MODEL_ENV_VAR",
+    "SCORING_ENV_VAR",
     "Choice",
     "ChoiceAnswer",
     "Decision",
@@ -61,6 +65,7 @@ __all__ = [
     "ask",
     "ask_many",
     "jev_enabled",
+    "jev_scoring_enabled",
     "jev_settings",
     "load_question",
     "recipient",
@@ -82,6 +87,12 @@ def jev_settings() -> JevSettings | None:
 
 def jev_enabled() -> bool:
     return jev_settings() is not None
+
+
+def jev_scoring_enabled() -> bool:
+    """Whether the `score` node asks Jev (M11 J3). Needs Jev on as well."""
+    wanted = os.environ.get(SCORING_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
+    return wanted and jev_enabled()
 
 
 @lru_cache(maxsize=4)
@@ -125,7 +136,14 @@ def uses() -> list[str]:
     Grows as each use is added, so the privacy page never claims more, or
     less, than the code does.
     """
-    return [
+    sent = [
         # api/posting_check.py (M11 J2)
         "each job ad you paste, to check it is one before a resume is made",
     ]
+    if jev_scoring_enabled():
+        # graph/nodes/score.py (M11 J3)
+        sent.append(
+            "your achievements, one at a time, with the job's requirements, to rate "
+            "how well each shows each requirement"
+        )
+    return sent

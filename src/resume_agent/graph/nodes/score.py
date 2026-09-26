@@ -21,11 +21,13 @@ between runs and cannot be unit-tested (CLAUDE.md rule 2).
 from __future__ import annotations
 
 import logging
+import time
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
+from resume_agent import decisions
 from resume_agent.cache import ModelListCache, content_key
 from resume_agent.llm import (
     build_chat_model,
@@ -111,6 +113,7 @@ def score_fit(
     llm: BaseChatModel | None = None,
     use_cache: bool = True,
     model: str | None = None,
+    details: dict | None = None,
 ) -> list[EvidenceMatch]:
     """One batched call scoring every plausible (bullet, requirement) pair.
 
@@ -122,14 +125,27 @@ def score_fit(
     Cached because this is one of the two calls that dominate a run's cost, and
     M5's layout loop re-runs everything downstream of it several times per
     posting without the scores ever changing.
+
+    With `RESUME_AGENT_JEV_SCORING` on, Jev is asked first (`_score_with_jev`)
+    and this call is the fallback. `details`, when given, is filled with which
+    of the two scored, for `run.json`.
     """
     if not job.requirements or not bullet_ids:
         return []
+    details = details if details is not None else {}
+
+    started = time.monotonic()
+    if decisions.jev_scoring_enabled():
+        matches = _score_with_jev_cached(job, bullet_ids, profile, use_cache, details)
+        if matches is not None:
+            details["seconds"] = round(time.monotonic() - started, 2)
+            return matches
 
     # Resolved at call time, not as a default argument: the id is part of the
     # cache key, so freezing it at import would let one provider serve another's
     # scores.
     model = model or model_for()
+    details.update(by="model", model=model, cached=False)
 
     cache = ModelListCache(EvidenceMatch, "scores")
     key = scoring_cache_key(job, bullet_ids, model)
@@ -137,6 +153,7 @@ def score_fit(
         cached = cache.get(key)
         if cached is not None:
             logger.info("score_fit: cache hit (%d matches)", len(cached))
+            details.update(cached=True, seconds=round(time.monotonic() - started, 2))
             return cached
 
     llm = llm or build_chat_model(model=model)
@@ -180,7 +197,113 @@ def score_fit(
 
     if use_cache:
         cache.put(key, matches)
+    details["seconds"] = round(time.monotonic() - started, 2)
     return matches
+
+
+# -- M11 J3: the same judgement, asked of Jev ----------------------------------
+#
+# One request per achievement, carrying one rating question per requirement.
+# Jev answers every question in a request together, so this covers every pair
+# -- as the batched call does -- in as many requests as there are achievements,
+# and each request's state is one short achievement, which is where Jev is most
+# accurate ("send only the fields the question needs").
+#
+# The five levels in `prompts/decide_evidence.md` are the batched prompt's five
+# bands, so level / 4 lands in the same band and COVERED_THRESHOLD and
+# PARTIAL_THRESHOLD keep their meaning. Whether the result is as good is the
+# eval harness's call, which is why this is off by default.
+
+JEV_QUESTION = "evidence"
+
+# Pairs below this are left out, as the batched prompt tells the model to leave
+# out unrelated pairs: `select` sums relevance across requirements, so a
+# scatter of small scores would lift achievements that are evidence of nothing.
+JEV_FLOOR = 0.1
+
+
+def _score_with_jev_cached(
+    job: JobSpec,
+    bullet_ids: list[str],
+    profile: Profile,
+    use_cache: bool,
+    details: dict,
+) -> list[EvidenceMatch] | None:
+    """Jev's scores, or None to mean "ask the model instead"."""
+    model = decisions.jev_settings().model
+    cache = ModelListCache(EvidenceMatch, "scores")
+    key = content_key(
+        job.source_hash,
+        "|".join(sorted(bullet_ids)),
+        prompt_version(f"decide_{JEV_QUESTION}"),
+        "jev",
+        model,
+    )
+    if use_cache:
+        cached = cache.get(key)
+        if cached is not None:
+            details.update(by="jev", model=model, cached=True)
+            return cached
+
+    try:
+        matches, usage = _score_with_jev(job, bullet_ids, profile)
+    except decisions.DecisionsUnavailable as exc:
+        logger.warning("score_fit: Jev could not score (%s); asking the model instead", exc)
+        return None
+
+    if use_cache:
+        cache.put(key, matches)
+    details.update(by="jev", model=model, cached=False, **usage)
+    logger.info(
+        "score_fit: Jev scored %d pairs in %d requests", len(matches), usage["requests"]
+    )
+    return matches
+
+
+def _score_with_jev(
+    job: JobSpec, bullet_ids: list[str], profile: Profile
+) -> tuple[list[EvidenceMatch], dict]:
+    question = decisions.load_question(JEV_QUESTION)
+    if not isinstance(question, decisions.Score):
+        raise ValueError(f"decide_{JEV_QUESTION}.md must be a score question")
+
+    requirement_for = {f"r{i}": req.text for i, req in enumerate(job.requirements)}
+    questions = {
+        name: question.model_copy(
+            update={"instructions": question.instructions.replace("{requirement}", text)}
+        )
+        for name, text in requirement_for.items()
+    }
+
+    requests = []
+    for bullet_id in bullet_ids:
+        bullet = profile.bullet_by_id(bullet_id)
+        state = {"achievement": bullet.canonical.strip()}
+        if bullet.skills:
+            state["skills"] = ", ".join(bullet.skills)
+        requests.append((state, questions))
+
+    answered = decisions.ask_many(requests)
+
+    matches = []
+    for bullet_id, decision in zip(bullet_ids, answered, strict=True):
+        for name, text in requirement_for.items():
+            relevance = min(1.0, max(0.0, decision.answers[name].score / question.top))
+            if relevance >= JEV_FLOOR:
+                matches.append(
+                    EvidenceMatch(
+                        bullet_id=bullet_id,
+                        requirement_text=text,
+                        relevance=round(relevance, 3),
+                        # Jev rates; it does not explain. `report.py` says so.
+                        rationale="",
+                    )
+                )
+    usage = {
+        "requests": len(answered),
+        "input_tokens": sum(d.usage.input_tokens or 0 for d in answered),
+    }
+    return matches, usage
 
 
 def build_fit_report(job: JobSpec, matches: list[EvidenceMatch]) -> FitReport:

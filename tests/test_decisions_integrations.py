@@ -160,3 +160,158 @@ def test_a_turned_away_paste_does_not_use_up_a_run_on_the_hosted_site(jev: FakeJ
 
 def test_the_privacy_page_says_job_ads_are_checked(jev: FakeJev) -> None:
     assert any("job ad" in use for use in decisions.uses())
+
+
+# ===========================================================================
+# J3: scoring
+# ===========================================================================
+
+
+def rated(rate: Callable[[dict, str], float]) -> Answerer:
+    """Answer each rating question with `rate(state, requirement text)`."""
+    def answer(state, questions):
+        return {
+            name: {
+                "type": "score",
+                "score": rate(state, question["instructions"].rsplit("Requirement: ", 1)[1]),
+                "confidence": 0.9,
+                "probabilities": {"0": 1.0},
+            }
+            for name, question in questions.items()
+        }
+    return answer
+
+
+@pytest.fixture
+def scoring(jev: FakeJev, monkeypatch) -> FakeJev:
+    monkeypatch.setenv(decisions.SCORING_ENV_VAR, "1")
+    return jev
+
+
+def test_one_request_per_achievement_with_a_question_per_requirement(
+    scoring: FakeJev, example_profile
+) -> None:
+    from resume_agent.graph.nodes.score import score_fit  # noqa: PLC0415
+    from tests.test_fit import make_job, req  # noqa: PLC0415
+
+    job = make_job(req("kubernetes"), req("python"), req("leadership"))
+    ids = [b.id for b in example_profile.all_bullets()][:4]
+    scoring.answer = rated(lambda _state, _req: 4.0)
+    details: dict = {}
+
+    score_fit(job, ids, example_profile, use_cache=False, details=details)
+
+    assert len(scoring.asked) == 4, "one request per achievement"
+    state, questions = scoring.asked[0]
+    assert state["achievement"] == example_profile.bullet_by_id(ids[0]).canonical.strip()
+    assert sorted(q["instructions"].rsplit("Requirement: ", 1)[1] for q in questions.values()) == [
+        "kubernetes", "leadership", "python"
+    ]
+    assert all(len(q["criteria"]) == 5 for q in questions.values())
+    seconds = details.pop("seconds")
+    assert details == {"by": "jev", "model": "jev-1.13", "cached": False,
+                       "requests": 4, "input_tokens": 400}
+    assert isinstance(seconds, float), "how long scoring took, for the eval comparison"
+
+
+def test_levels_land_in_the_bands_the_thresholds_expect(scoring: FakeJev, example_profile):
+    """Level / 4: direct 1.0 and strong 0.75 are covered (>= 0.7), partial 0.5 is
+    partial (>= 0.4), weak 0.25 is a gap, and unrelated is left out entirely."""
+    from resume_agent.graph.nodes.score import build_fit_report, score_fit  # noqa: PLC0415
+    from tests.test_fit import make_job, req  # noqa: PLC0415
+
+    job = make_job(req("direct"), req("strong"), req("partial"), req("weak"), req("unrelated"))
+    level = {"direct": 4, "strong": 3, "partial": 2, "weak": 1, "unrelated": 0.2}
+    ids = [example_profile.all_bullets()[0].id]
+    scoring.answer = rated(lambda _state, requirement: level[requirement])
+
+    matches = score_fit(job, ids, example_profile, use_cache=False)
+    relevance = {m.requirement_text: m.relevance for m in matches}
+    report = build_fit_report(job, matches)
+
+    assert relevance == {"direct": 1.0, "strong": 0.75, "partial": 0.5, "weak": 0.25}
+    assert {m.requirement_text for m in report.covered} == {"direct", "strong"}
+    assert {m.requirement_text for m in report.partial} == {"partial"}
+    assert {r.text for r in report.gaps} == {"weak", "unrelated"}
+    assert all(m.rationale == "" for m in matches), "Jev rates; it does not explain"
+
+
+def test_scoring_stays_with_the_model_unless_switched_on(jev: FakeJev, example_profile):
+    """Jev on for the posting check does not mean Jev scores: that changes what
+    gets selected, so it has its own switch, off until the evals say so."""
+    from resume_agent.graph.nodes.score import ScoringResult, score_fit  # noqa: PLC0415
+    from tests.test_fit import FakeScoringModel, make_job, req  # noqa: PLC0415
+
+    model = FakeScoringModel(result=ScoringResult(matches=[]))
+    details: dict = {}
+
+    score_fit(make_job(req("a")), [example_profile.all_bullets()[0].id], example_profile,
+              llm=model, use_cache=False, details=details)
+
+    assert jev.asked == []
+    assert model.call_count == 1
+    assert details["by"] == "model"
+
+
+def test_jev_down_means_the_model_scores(scoring: FakeJev, example_profile, caplog) -> None:
+    from resume_agent.graph.nodes.score import ScoringResult, score_fit  # noqa: PLC0415
+    from tests.test_fit import FakeScoringModel, make_job, req  # noqa: PLC0415
+
+    scoring.down = True
+    model = FakeScoringModel(result=ScoringResult(matches=[]))
+    details: dict = {}
+
+    score_fit(make_job(req("a")), [example_profile.all_bullets()[0].id], example_profile,
+              llm=model, use_cache=False, details=details)
+
+    assert model.call_count == 1
+    assert details["by"] == "model"
+    assert "asking the model instead" in caplog.text
+
+
+def test_jev_scores_are_cached_like_the_models(scoring: FakeJev, example_profile) -> None:
+    """The layout loop re-runs everything after scoring; the scores never change."""
+    from resume_agent.graph.nodes.score import score_fit  # noqa: PLC0415
+    from tests.test_fit import make_job, req  # noqa: PLC0415
+
+    job = make_job(req("a"))
+    ids = [example_profile.all_bullets()[0].id]
+    scoring.answer = rated(lambda _state, _req: 3.0)
+
+    first = score_fit(job, ids, example_profile)
+    details: dict = {}
+    second = score_fit(job, ids, example_profile, details=details)
+
+    assert first == second
+    assert len(scoring.asked) == 1
+    assert details["cached"] is True
+
+
+def test_the_score_node_says_who_scored(scoring: FakeJev, example_profile) -> None:
+    from pathlib import Path  # noqa: PLC0415
+
+    from resume_agent.graph.build import node_score  # noqa: PLC0415
+    from resume_agent.graph.state import RunOptions  # noqa: PLC0415
+    from tests.test_fit import make_job, req  # noqa: PLC0415
+
+    scoring.answer = rated(lambda _state, _req: 4.0)
+    example = Path(__file__).resolve().parent.parent / "profile.example"
+    state = {
+        "job_spec": make_job(req("a")),
+        "candidates": [example_profile.all_bullets()[0].id],
+        "profile_path": str(example),
+        "options": RunOptions(use_cache=False),
+    }
+
+    result = node_score(state)
+
+    assert result["scoring"]["by"] == "jev"
+    assert result["fit_report"].covered
+
+
+def test_the_privacy_page_mentions_achievements_only_when_jev_scores(jev: FakeJev, monkeypatch):
+    assert not any("achievements" in use for use in decisions.uses())
+
+    monkeypatch.setenv(decisions.SCORING_ENV_VAR, "1")
+
+    assert any("achievements" in use for use in decisions.uses())

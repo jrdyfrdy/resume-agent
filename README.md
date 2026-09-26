@@ -518,6 +518,21 @@ broken.
 | `RESUME_AGENT_JEV_API_KEY` | *unset (off)* | An OpenRouter key. TypeSafe paused direct signups on 22 Sep 2026. |
 | `RESUME_AGENT_JEV_BASE_URL` | `https://openrouter.ai/api` | `https://api.typesafe.ai` for a direct account. |
 | `RESUME_AGENT_JEV_MODEL` | `jev-1.13` | Pinned, so eval results belong to one model version. |
+| `RESUME_AGENT_JEV_SCORING` | *off* | `1` lets Jev score achievements against the job. It has its own switch because it changes what gets selected. |
+
+**What it does when on:**
+- **Checks a pasted job ad before a run starts.** A paste it judges not to be a posting (below 0.2) is turned away without using up a run. Anything else goes ahead.
+- **Scores achievements against the job** (with `RESUME_AGENT_JEV_SCORING=1`). It sends one request per achievement, with a rating question per requirement. The five levels match the scoring prompt's five bands, so the covered and partial thresholds keep their meaning. Jev rates but doesn't explain, so `analyze` shows no rationale for those lines.
+
+**Whether scoring should be Jev by default is a question for the eval set, not for the launch claims:**
+
+```bash
+uv run python evals/run_eval.py --decisions llm
+uv run python evals/run_eval.py --decisions jev
+uv run python evals/run_eval.py --compare evals/results/<llm>.json evals/results/<jev>.json
+```
+
+The comparison shows, per posting, the requirements covered, how many of the same achievements were picked, the judge score, and the seconds scoring took. The rule for switching: the mean judge score holds within 0.1, and coverage doesn't drop. For a fair time, give each run an empty `RESUME_AGENT_CACHE_DIR`.
 
 It has its own key variable rather than reusing `OPENROUTER_API_KEY`, because
 that one also takes part in choosing the model that *writes*.
