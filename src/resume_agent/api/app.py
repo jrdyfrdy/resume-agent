@@ -86,6 +86,7 @@ from resume_agent.chat.advise import advise
 from resume_agent.chat.extract import apply as apply_proposal_items
 from resume_agent.chat.extract import extract
 from resume_agent.chat.session import Registry
+from resume_agent.chat.session import route as route_message
 from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.forms import (
@@ -665,7 +666,9 @@ def create_app(
                 # it, so this says which file rather than failing silently.
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        turn = chats.start(request.profile, request.message)
+        # Asked off the event loop: with Jev on, routing is a network call.
+        intent = await asyncio.to_thread(route_message, request.message)
+        turn = chats.start(request.profile, request.message, intent=intent)
         asyncio.create_task(_chat_turn(turn, profile, chats, chat_model_factory))
         return ChatCreated(turn_id=turn.turn_id, intent=turn.intent)
 
@@ -987,8 +990,11 @@ async def _chat_turn(turn, profile, chats: Registry, model_factory) -> None:
     try:
         if turn.intent == "extract":
             turn.emit("status", text="reading what you wrote…")
-            proposal = extract(
-                turn.message, profile, llm=model_factory() if model_factory else None
+            # On a worker thread. This is a blocking model call -- and, with Jev
+            # on, a second request -- and run on the event loop it froze the
+            # whole server for everyone until it returned.
+            proposal = await asyncio.to_thread(
+                extract, turn.message, profile, llm=model_factory() if model_factory else None
             )
             turn.proposal = proposal
             turn.reply = proposal.reply

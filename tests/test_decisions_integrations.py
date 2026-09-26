@@ -310,8 +310,170 @@ def test_the_score_node_says_who_scored(scoring: FakeJev, example_profile) -> No
 
 
 def test_the_privacy_page_mentions_achievements_only_when_jev_scores(jev: FakeJev, monkeypatch):
-    assert not any("achievements" in use for use in decisions.uses())
+    scoring_line = "how well each shows each requirement"
+    assert not any(scoring_line in use for use in decisions.uses())
 
     monkeypatch.setenv(decisions.SCORING_ENV_VAR, "1")
 
-    assert any("achievements" in use for use in decisions.uses())
+    assert any(scoring_line in use for use in decisions.uses())
+
+
+# ===========================================================================
+# J4: chat routing
+# ===========================================================================
+
+# No "I", under 25 words, no question word: the rules read it as advice.
+DICTATION_THE_RULES_MISS = "Built a Kubernetes operator at Acme that cut deploys to 5 minutes."
+
+
+def intent(choice: str, confidence: float) -> Answerer:
+    return lambda _state, questions: {
+        name: {"type": "choice", "choice": choice, "confidence": confidence,
+               "probabilities": {choice: confidence}}
+        for name in questions
+    }
+
+
+def test_jev_routes_the_message_when_it_is_sure(jev: FakeJev) -> None:
+    from resume_agent.chat.session import classify, route  # noqa: PLC0415
+
+    jev.answer = intent("dictation", 0.92)
+
+    assert classify(DICTATION_THE_RULES_MISS) == "advise", "the rules get this one wrong"
+    assert route(DICTATION_THE_RULES_MISS) == "extract"
+    state, questions = jev.asked[0]
+    assert state == DICTATION_THE_RULES_MISS
+    assert set(questions["intent"]["criteria"]) == {"advice", "dictation"}
+
+
+def test_an_unsure_jev_leaves_it_to_the_rules(jev: FakeJev) -> None:
+    from resume_agent.chat.session import route  # noqa: PLC0415
+
+    jev.answer = intent("dictation", 0.55)
+
+    assert route(DICTATION_THE_RULES_MISS) == "advise"
+
+
+def test_a_removal_is_never_put_to_jev(jev: FakeJev) -> None:
+    """The removal rule stays first: answering a removal with advice produced
+    prose agreeing to do it, and nothing done."""
+    from resume_agent.chat.session import route  # noqa: PLC0415
+
+    jev.answer = intent("advice", 0.99)
+
+    assert route("Can you remove my narratives?") == "extract"
+    assert jev.asked == []
+
+
+def test_jev_down_leaves_it_to_the_rules(jev: FakeJev) -> None:
+    from resume_agent.chat.session import route  # noqa: PLC0415
+
+    jev.down = True
+
+    assert route("I rewrote the exporter so it streams.") == "extract"
+    assert route("What is weak about my file?") == "advise"
+
+
+def test_the_chat_endpoint_routes_with_jev(jev: FakeJev) -> None:
+    from resume_agent.chat.extract import ExtractionFields  # noqa: PLC0415
+    from tests.test_chat import ScriptedExtractor  # noqa: PLC0415
+
+    jev.answer = intent("dictation", 0.9)
+    app = create_app(
+        graph_factory=lambda **_kw: FakeGraph(), mode="local",
+        chat_model_factory=lambda: ScriptedExtractor(fields=ExtractionFields(reply="noted")),
+    )
+    with TestClient(app) as client:
+        created = client.post(
+            "/api/chat", json={"profile": "profile.example", "message": DICTATION_THE_RULES_MISS}
+        )
+
+    assert created.status_code == 202
+    assert created.json()["intent"] == "extract"
+
+
+# ===========================================================================
+# J4: the "not said" flag
+# ===========================================================================
+
+SAID = "I helped with the billing migration at Halvorsen, moving about 40 jobs to the new queue."
+
+
+def proposal_with(example_profile, *canonicals: str):
+    """A proposal holding one new job with these achievements."""
+    from resume_agent.chat.extract import (  # noqa: PLC0415
+        ExtractionFields,
+        ProposedBullet,
+        ProposedEntry,
+        build_proposal,
+    )
+
+    fields = ExtractionFields(reply="ok", entries=[ProposedEntry(
+        kind="experience", name="Halvorsen", title="Engineer", start="2023-01",
+        bullets=[ProposedBullet(canonical=text) for text in canonicals],
+    )])
+    return build_proposal(fields, SAID, example_profile)
+
+
+def stated_unless(doubted: str) -> Answerer:
+    """Supported, except the achievement whose text contains `doubted`."""
+    return lambda _state, questions: {
+        name: {"type": "noul", "noul": 0.1 if doubted in question["instructions"] else 0.95}
+        for name, question in questions.items()
+    }
+
+
+def test_an_achievement_that_says_more_than_you_did_is_flagged(jev: FakeJev, example_profile):
+    """"Led" from "helped with": no number or technology changed, so no other
+    check could see it."""
+    jev.answer = stated_unless("Led")
+
+    proposal = proposal_with(
+        example_profile,
+        "Helped migrate about 40 billing jobs to the new queue.",
+        "Led the billing migration to the new queue.",
+    )
+
+    [entry] = proposal.items
+    flags = [f for f in entry.flags if f.kind == "not_stated"]
+    assert len(flags) == 1
+    assert "Led the billing migration" in flags[0].detail
+    assert proposal.flagged() == [entry], "a flagged item arrives unticked"
+
+    assert len(jev.asked) == 1, "one request for the whole proposal"
+    state, questions = jev.asked[0]
+    assert state == {"what_the_person_wrote": SAID}
+    assert len(questions) == 2
+
+
+def test_a_faithful_proposal_is_not_flagged(jev: FakeJev, example_profile) -> None:
+    jev.answer = stated_unless("nothing matches this")
+
+    proposal = proposal_with(example_profile, "Helped migrate about 40 billing jobs.")
+
+    assert not any(f.kind == "not_stated" for f in proposal.items[0].flags)
+
+
+def test_jev_down_keeps_the_other_checks(jev: FakeJev, example_profile) -> None:
+    jev.down = True
+
+    proposal = proposal_with(example_profile, "Migrated 400 billing jobs to Kafka.")
+
+    kinds = {f.kind for f in proposal.items[0].flags}
+    assert "not_stated" not in kinds
+    assert {"invented_number", "invented_technology"} <= kinds, "the free checks still ran"
+
+
+def test_jev_off_is_not_asked(jev: FakeJev, example_profile, monkeypatch) -> None:
+    monkeypatch.delenv(decisions.API_KEY_ENV_VAR)
+
+    proposal_with(example_profile, "Helped migrate about 40 billing jobs.")
+
+    assert jev.asked == []
+
+
+def test_the_privacy_page_lists_the_chat_uses(jev: FakeJev) -> None:
+    uses = " ".join(decisions.uses())
+
+    assert "chat messages" in uses
+    assert "achievements the chat proposes" in uses

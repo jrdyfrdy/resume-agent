@@ -36,6 +36,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field
 
+from resume_agent import decisions
 from resume_agent.grounding.numbers import extract_numbers, unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
 from resume_agent.kb.forms import (
@@ -160,7 +161,9 @@ class Flag(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_id: str
-    kind: Literal["invented_number", "invented_technology", "unknown_entry", "bad_date"]
+    kind: Literal[
+        "invented_number", "invented_technology", "unknown_entry", "bad_date", "not_stated"
+    ]
     detail: str
 
 
@@ -298,7 +301,66 @@ def build_proposal(
     for index, deletion in enumerate(fields.deletions):
         items.append(_deletion_item(f"deletion-{index}", deletion, profile))
 
+    if decisions.jev_enabled():
+        _flag_unstated(items, message)
+
     return Proposal(reply=fields.reply.strip(), items=items)
+
+
+# M11 J4. The checks above catch a number or a technology you never wrote, and
+# a date too vague to use. What they cannot catch is a sentence that is clean
+# of both and still says more than you did -- "led the migration" from "helped
+# with the migration". Jev reads each proposed achievement against your
+# message and flags the ones it doubts. A flag only unticks the item; you
+# still decide. So this makes the gate stricter and never looser (rule 1).
+
+# Below this probability that your message supports an achievement, it is flagged.
+STATED_BELOW = 0.5
+
+_STATED_CHARS = 20_000
+
+NOT_STATED = (
+    "This may claim more than you wrote. Read it against your message before "
+    "accepting it."
+)
+
+
+def _flag_unstated(items: list[Item], message: str) -> None:
+    """One request for the whole proposal: your message as the state, one
+    question per proposed achievement. Adds flags in place; if Jev cannot
+    answer, the proposal keeps the flags it already had."""
+    asked: dict[str, tuple[Item, str]] = {}
+    for item in items:
+        if item.kind == "bullet":
+            texts = [item.payload["bullet"]["canonical"]]
+        elif item.kind == "entry":
+            texts = [bullet["canonical"] for bullet in item.payload.get("bullets", [])]
+        else:
+            continue
+        for text in texts:
+            asked[f"q{len(asked)}"] = (item, text)
+    if not asked:
+        return
+
+    question = decisions.load_question("stated")
+    questions = {
+        name: question.model_copy(
+            update={"instructions": question.instructions.replace("{achievement}", text)}
+        )
+        for name, (_item, text) in asked.items()
+    }
+    try:
+        decision = decisions.ask(
+            {"what_the_person_wrote": message[:_STATED_CHARS]}, questions
+        )
+    except decisions.DecisionsUnavailable:
+        logger.info("chat: Jev could not check the proposal; keeping the other checks' flags")
+        return
+
+    for name, (item, text) in asked.items():
+        if decision.answers[name].noul < STATED_BELOW:
+            detail = NOT_STATED if item.kind == "bullet" else f"{text!r}: {NOT_STATED}"
+            item.flags.append(Flag(item_id=item.item_id, kind="not_stated", detail=detail))
 
 
 def _deletion_item(item_id: str, deletion: ProposedDeletion, profile: Profile) -> Item:

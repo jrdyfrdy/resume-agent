@@ -15,6 +15,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 
+from resume_agent import decisions
 from resume_agent.chat.extract import Proposal
 
 # Turns kept per profile. Long enough to look back over a working session,
@@ -97,13 +98,15 @@ class Registry:
     def conversation(self, profile: str) -> Conversation:
         return self._by_profile.setdefault(profile, Conversation(profile=profile))
 
-    def start(self, profile: str, message: str) -> Turn:
+    def start(self, profile: str, message: str, intent: str | None = None) -> Turn:
+        """`intent` is `route`'s answer when the caller asked it; otherwise the
+        heuristic decides here, as it always did."""
         conversation = self.conversation(profile)
         turn = Turn(
             turn_id=uuid.uuid4().hex[:12],
             profile=profile,
             message=message,
-            intent=classify(message),
+            intent=intent or classify(message),
         )
         conversation.turns.append(turn)
         self._turns[turn.turn_id] = turn
@@ -148,3 +151,44 @@ def classify(message: str) -> str:
     # turn up here are mostly irregular -- rewrote, built, led, spent, shipped.
     narrates = re.match(r"\s*(i|we)\b", text, re.IGNORECASE) is not None
     return "extract" if narrates or len(text.split()) > 25 else "advise"
+
+
+# M11 J4: Jev decides when it is sure. Below this confidence the heuristic does,
+# exactly as before Jev -- a wrong route is cheap, but it should not be random.
+JEV_CONFIDENCE = 0.7
+
+# More than any chat message is allowed to be (20,000 characters), and well
+# inside Jev's input limit.
+_ROUTE_CHARS = 20_000
+
+_INTENT_FOR = {"advice": "advise", "dictation": "extract"}
+
+
+def route(message: str) -> str:
+    """`advise` or `extract`, asking Jev when it is on.
+
+    The removal rule still comes first and is never put to Jev: a removal
+    answered by `advise` produced this feature's worst outcome -- prose agreeing
+    to do it, and nothing done -- and a regex that cannot miss it is worth more
+    than a model that usually would not. After that, Jev decides when it is
+    confident; otherwise, or when it cannot answer, `classify` does.
+
+    Makes a network call when Jev is on, so the web app runs it off the event
+    loop and hands the answer to `Registry.start`.
+    """
+    text = message.strip()
+    if not text:
+        return "advise"
+    if _MUTATES.match(text):
+        return "extract"
+    if decisions.jev_enabled():
+        try:
+            answer = decisions.ask(
+                text[:_ROUTE_CHARS], {"intent": decisions.load_question("intent")}
+            ).answers["intent"]
+        except decisions.DecisionsUnavailable:
+            pass
+        else:
+            if answer.confidence >= JEV_CONFIDENCE and answer.choice in _INTENT_FOR:
+                return _INTENT_FOR[answer.choice]
+    return classify(message)

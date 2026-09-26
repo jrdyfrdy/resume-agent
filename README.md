@@ -522,6 +522,8 @@ broken.
 
 **What it does when on:**
 - **Checks a pasted job ad before a run starts.** A paste it judges not to be a posting (below 0.2) is turned away without using up a run. Anything else goes ahead.
+- **Routes chat messages.** The rule for "remove …" commands still comes first and is never put to Jev. After that, Jev decides question-or-description when it's at least 0.7 confident, and the old rules decide otherwise.
+- **Flags chat proposals that say more than you did.** All of a proposal's achievements go in one request, each read against your message. Any it doubts (below 0.5) is flagged "This may claim more than you wrote" and arrives unticked. This catches "led" from "helped with", which the number and technology checks can't see. It only ever adds flags.
 - **Scores achievements against the job** (with `RESUME_AGENT_JEV_SCORING=1`). It sends one request per achievement, with a rating question per requirement. The five levels match the scoring prompt's five bands, so the covered and partial thresholds keep their meaning. Jev rates but doesn't explain, so `analyze` shows no rationale for those lines.
 
 **Whether scoring should be Jev by default is a question for the eval set, not for the launch claims:**

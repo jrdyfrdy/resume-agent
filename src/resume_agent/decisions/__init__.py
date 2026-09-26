@@ -139,6 +139,11 @@ def uses() -> list[str]:
     sent = [
         # api/posting_check.py (M11 J2)
         "each job ad you paste, to check it is one before a resume is made",
+        # chat/session.py route (M11 J4)
+        "your chat messages, to tell a question from a description of your work",
+        # chat/extract.py _flag_unstated (M11 J4)
+        "the achievements the chat proposes, with what you wrote, to flag any "
+        "that say more than you did",
     ]
     if jev_scoring_enabled():
         # graph/nodes/score.py (M11 J3)
