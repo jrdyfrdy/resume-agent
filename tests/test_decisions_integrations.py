@@ -477,3 +477,136 @@ def test_the_privacy_page_lists_the_chat_uses(jev: FakeJev) -> None:
 
     assert "chat messages" in uses
     assert "achievements the chat proposes" in uses
+
+
+# ===========================================================================
+# J5: the fact-check shadow
+# ===========================================================================
+
+
+@pytest.fixture
+def shadow_log(jev: FakeJev, monkeypatch, tmp_path):
+    """Shadow mode on, as the eval harness switches it on."""
+    from resume_agent.decisions.shadow import SHADOW_LOG_ENV_VAR  # noqa: PLC0415
+
+    path = tmp_path / "shadow.jsonl"
+    monkeypatch.setenv(SHADOW_LOG_ENV_VAR, str(path))
+    monkeypatch.delenv("RESUME_AGENT_MULTIUSER", raising=False)
+    return path
+
+
+def rows(path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def judged(verdict: str, reason: str = "fine"):
+    """The grounding judge's verdict on one rewrite, with shadow mode as set."""
+    from resume_agent.graph.nodes.verify import verify_with_judge  # noqa: PLC0415
+    from resume_agent.models.resume import JudgeVerdict  # noqa: PLC0415
+    from tests.test_verifier import SOURCE, FakeJudge, tailored  # noqa: PLC0415
+
+    judge = FakeJudge(verdict=JudgeVerdict(verdict=verdict, reason=reason))
+    return verify_with_judge(tailored("Led a team of engineers."), SOURCE, llm=judge)
+
+
+def test_the_checker_decides_even_when_jev_disagrees(shadow_log, jev: FakeJev) -> None:
+    """Measure only: Jev sure it passes, the checker refuses -- refused."""
+    jev.answer = noul(0.97)
+
+    result = judged("unsupported", "says 'led' where the source says 'collaborated'")
+
+    assert result.passed is False, "Jev's answer changed nothing"
+    [row] = rows(shadow_log)
+    assert row["kind"] == "grounding"
+    assert row["jev"] == 0.97
+    assert row["checker_passed"] is False
+    assert row["rewrite"] == "Led a team of engineers."
+    assert "led" in row["reason"]
+    state, _questions = jev.asked[0]
+    assert set(state) == {"source", "rewrite"}
+
+
+def test_shadow_is_off_unless_the_harness_asks(jev: FakeJev) -> None:
+    jev.answer = noul(0.5)
+
+    judged("supported")
+
+    assert jev.asked == []
+
+
+def test_shadow_is_never_on_the_hosted_site(shadow_log, jev: FakeJev, monkeypatch) -> None:
+    """The log would hold a person's career text."""
+    monkeypatch.setenv("RESUME_AGENT_MULTIUSER", "1")
+    jev.answer = noul(0.5)
+
+    judged("supported")
+
+    assert jev.asked == []
+    assert not shadow_log.exists()
+
+
+def test_the_shadow_switch_reads_the_same_variable_as_the_site() -> None:
+    from resume_agent.accounts.auth import MULTIUSER_ENV_VAR  # noqa: PLC0415
+    from resume_agent.decisions import shadow  # noqa: PLC0415
+
+    assert shadow.MULTIUSER_ENV_VAR == MULTIUSER_ENV_VAR
+
+
+def test_jev_down_records_nothing_and_changes_nothing(shadow_log, jev: FakeJev) -> None:
+    jev.down = True
+
+    assert judged("supported").passed is True
+    assert not shadow_log.exists()
+
+
+def test_the_letter_check_is_shadowed_too(shadow_log, jev: FakeJev) -> None:
+    from resume_agent.graph.nodes.cover_letter import verify_consistency  # noqa: PLC0415
+    from resume_agent.models.letter import ConsistencyVerdict  # noqa: PLC0415
+    from tests.test_cover_letter import FakeConsistencyJudge, letter  # noqa: PLC0415
+
+    jev.answer = noul(0.9)
+    judge = FakeConsistencyJudge(verdict=ConsistencyVerdict(verdict="consistent", reason="ok"))
+
+    result = verify_consistency(letter(), ["Cut p95 latency to 50ms"], llm=judge)
+
+    assert result.passed is True
+    [row] = rows(shadow_log)
+    assert row["kind"] == "letter" and row["checker_passed"] is True
+    state, _questions = jev.asked[0]
+    assert state["resume_bullets"] == ["Cut p95 latency to 50ms"]
+
+
+def test_the_report_lists_every_line_jev_would_have_passed_wrongly() -> None:
+    """The number any future decision needs: at the chosen threshold, how many
+    lines Jev was sure of that the checker refused. It must be zero."""
+    from resume_agent.decisions.shadow import render, summarise  # noqa: PLC0415
+
+    log = [
+        {"kind": "grounding", "jev": 0.97, "checker_passed": True, "rewrite": "ok 1"},
+        {"kind": "grounding", "jev": 0.95, "checker_passed": True, "rewrite": "ok 2"},
+        {"kind": "grounding", "jev": 0.93, "checker_passed": False, "rewrite": "Led a team.",
+         "reason": "says led"},
+        {"kind": "grounding", "jev": 0.30, "checker_passed": False, "rewrite": "bad"},
+        {"kind": "grounding", "jev": 0.85, "checker_passed": True, "rewrite": "ok 3"},
+    ]
+
+    summary = summarise(log)["grounding"]
+
+    assert summary["lines"] == 5
+    assert summary["agreement_at_0.5"] == 0.8
+    assert summary["by_threshold"]["0.9"] == {
+        "jev_sure_it_passes": 3, "checker_refused_those": 1, "checks_that_could_be_skipped": 2,
+    }
+    assert [row["rewrite"] for row in summary["refused_but_jev_sure"]] == ["Led a team."]
+    text = render({"grounding": summary})
+    assert "! Jev 0.93 but refused: 'Led a team.'" in text
+    assert "checker: says led" in text
+
+
+def test_the_harness_shadow_needs_a_key(monkeypatch, tmp_path) -> None:
+    from evals.run_eval import _start_shadow  # noqa: PLC0415
+
+    monkeypatch.delenv(decisions.API_KEY_ENV_VAR, raising=False)
+
+    with pytest.raises(SystemExit, match=decisions.API_KEY_ENV_VAR):
+        _start_shadow(tmp_path / "s.jsonl")

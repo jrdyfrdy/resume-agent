@@ -153,6 +153,7 @@ def run_eval(
     out_dir: Path | None = None,
     judge: bool = True,
     decisions: str = "llm",
+    letters: bool = False,
 ) -> EvalReport:
     """Run every JD through the graph, then score the result.
 
@@ -183,8 +184,9 @@ def run_eval(
             out_dir=str(out_dir / name),
             # The letter is scored by its own checks in M6; the resume judge has
             # nothing to say about it, and 15 extra draft-plus-judge cycles would
-            # roughly double the cost of a run for no signal here.
-            write_cover_letter=False,
+            # roughly double the cost of a run for no signal here. `--letters`
+            # turns them on, for shadowing the letter's consistency check.
+            write_cover_letter=letters,
         )
         try:
             state = graph.invoke(
@@ -246,6 +248,34 @@ def _choose_scorer(decisions: str) -> None:
         os.environ[jev.SCORING_ENV_VAR] = "1"
     else:
         os.environ.pop(jev.SCORING_ENV_VAR, None)
+
+
+def _start_shadow(path: Path) -> Path:
+    """Switch shadow mode on for this process, logging to `path` (M11 J5)."""
+    from resume_agent import decisions as jev  # noqa: PLC0415
+    from resume_agent.decisions.shadow import SHADOW_LOG_ENV_VAR  # noqa: PLC0415
+
+    if not jev.jev_enabled():
+        raise SystemExit(f"--jev-shadow needs {jev.API_KEY_ENV_VAR} set.")
+    path.unlink(missing_ok=True)
+    os.environ[SHADOW_LOG_ENV_VAR] = str(path)
+    return path
+
+
+def _finish_shadow(path: Path) -> None:
+    """Print the agreement report and save it beside the log."""
+    from resume_agent.decisions.shadow import render, summarise  # noqa: PLC0415
+
+    rows = (
+        [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+        if path.is_file()
+        else []
+    )
+    summary = summarise(rows)
+    print(render(summary))
+    report_path = path.with_suffix(".json")
+    report_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    print(f"shadow report: {report_path}")
 
 
 def compare(before: dict, after: dict) -> str:
@@ -379,6 +409,15 @@ def main() -> None:
         "--compare", nargs=2, metavar=("BEFORE", "AFTER"), default=None,
         help="print two saved results side by side and stop",
     )
+    parser.add_argument(
+        "--jev-shadow", action="store_true",
+        help="ask Jev beside the fact-checkers and report agreement (M11); "
+             "the checkers still decide",
+    )
+    parser.add_argument(
+        "--letters", action="store_true",
+        help="write cover letters too (roughly doubles cost), e.g. to shadow their check",
+    )
     args = parser.parse_args()
 
     if args.compare:
@@ -396,15 +435,21 @@ def main() -> None:
     jd_paths = sorted(JD_DIR.glob("*.txt"))[: args.limit]
     print(f"Running {len(jd_paths)} JDs ({args.variant or 'baseline'})...")
 
+    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    name = f"{args.variant or 'baseline'}-{args.decisions}-{stamp}"
+    shadow_path = _start_shadow(RESULTS_DIR / f"{name}-shadow.jsonl") if args.jev_shadow else None
+
     report = run_eval(
         jd_paths, Path(args.profile), variant=args.variant, judge=not args.no_judge,
-        decisions=args.decisions,
+        decisions=args.decisions, letters=args.letters,
     )
     print(render_table(report))
 
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    results_path = RESULTS_DIR / f"{report.variant}-{report.decisions}-{stamp}.json"
+    if shadow_path is not None:
+        _finish_shadow(shadow_path)
+
+    results_path = RESULTS_DIR / f"{name}.json"
     results_path.write_text(json.dumps(report.to_dict(), indent=2), encoding="utf-8")
     print(f"results: {results_path}")
 

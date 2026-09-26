@@ -35,6 +35,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 
+from resume_agent.decisions.shadow import shadow
 from resume_agent.graph.state import AgentState
 from resume_agent.grounding.numbers import unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
@@ -164,6 +165,15 @@ def verify_consistency(
     )
     if not isinstance(verdict, ConsistencyVerdict):
         verdict = ConsistencyVerdict.model_validate(verdict)
+
+    # M11 J5: logged beside the verdict in eval runs; the verdict decides.
+    shadow(
+        "letter",
+        "consistent",
+        {"resume_bullets": resume_bullets, "cover_letter": letter.body()},
+        checker_passed=verdict.verdict == "consistent",
+        record={"letter": letter.body(), "reason": verdict.reason},
+    )
 
     if verdict.verdict == "consistent":
         return LetterVerification.ok()

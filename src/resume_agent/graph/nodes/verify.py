@@ -27,6 +27,7 @@ import logging
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from resume_agent.decisions.shadow import shadow
 from resume_agent.grounding.numbers import unsupported_numbers
 from resume_agent.grounding.vocabulary import unsupported_technologies
 from resume_agent.llm import build_chat_model, load_prompt, structured_output
@@ -115,6 +116,22 @@ def verify_with_judge(
     )
     if not isinstance(verdict, JudgeVerdict):
         verdict = JudgeVerdict.model_validate(verdict)
+
+    # M11 J5: with shadow mode on (eval runs only), Jev answers the same
+    # question and both answers are logged. The verdict above decides; this
+    # line cannot change it.
+    shadow(
+        "grounding",
+        "supported",
+        {"source": source.canonical.strip(), "rewrite": tailored.text.strip()},
+        checker_passed=verdict.verdict == "supported",
+        record={
+            "bullet_id": source.id,
+            "source": source.canonical.strip(),
+            "rewrite": tailored.text.strip(),
+            "reason": verdict.reason,
+        },
+    )
 
     if verdict.verdict == "supported":
         return VerificationResult.ok(source.id)

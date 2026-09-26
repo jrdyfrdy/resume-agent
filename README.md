@@ -520,6 +520,9 @@ broken.
 | `RESUME_AGENT_JEV_MODEL` | `jev-1.13` | Pinned, so eval results belong to one model version. |
 | `RESUME_AGENT_JEV_SCORING` | *off* | `1` lets Jev score achievements against the job. It has its own switch because it changes what gets selected. |
 
+It has its own key variable rather than reusing `OPENROUTER_API_KEY`, because
+that one also takes part in choosing the model that *writes*.
+
 **What it does when on:**
 - **Checks a pasted job ad before a run starts.** A paste it judges not to be a posting (below 0.2) is turned away without using up a run. Anything else goes ahead.
 - **Routes chat messages.** The rule for "remove …" commands still comes first and is never put to Jev. After that, Jev decides question-or-description when it's at least 0.7 confident, and the old rules decide otherwise.
@@ -536,8 +539,13 @@ uv run python evals/run_eval.py --compare evals/results/<llm>.json evals/results
 
 The comparison shows, per posting, the requirements covered, how many of the same achievements were picked, the judge score, and the seconds scoring took. The rule for switching: the mean judge score holds within 0.1, and coverage doesn't drop. For a fair time, give each run an empty `RESUME_AGENT_CACHE_DIR`.
 
-It has its own key variable rather than reusing `OPENROUTER_API_KEY`, because
-that one also takes part in choosing the model that *writes*.
+**The fact-check is not Jev's.** The grounding judge and the cover letter's consistency judge decide every line, always (CLAUDE.md rule 1). What Jev can do is answer the same question *beside* them, in eval runs only:
+
+```bash
+uv run python evals/run_eval.py --jev-shadow            # add --letters to shadow the letter check too
+```
+
+It prints how often Jev and the checkers agree. It also lists, in full, every line Jev was at least 0.9 sure should pass but the checker refused. That count has to be zero, across enough lines to mean something, before Jev could ever share the check, and even then only with sign-off. Shadow mode is off in multi-user mode whatever the settings say, because its log holds the text being checked.
 
 The question wording lives in `prompts/decide_*.md`, versioned like every other
 prompt. When Jev is on, the hosted site's privacy page names TypeSafe, and the
