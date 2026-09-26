@@ -388,7 +388,66 @@ def build_chat_model(
         api_key=os.environ[provider.key_env_var],
         max_tokens=8000,
         extra_body=dict(provider.extra_body) if provider.extra_body else None,
+        http_client=shared_http_client(),
+        http_async_client=_async_http_client(),
         **kwargs,
+    )
+
+
+# -- the connection to the provider ------------------------------------------
+#
+# Found auditing a slow run: every model call took 21-26 seconds, and the model
+# was answering in about one. The rest was opening a connection. Two causes:
+#
+# * A fresh client per step. Every node builds its own model, and httpx keeps
+#   an idle connection for only 5 seconds, so almost every call of a run
+#   opened a new one.
+# * IPv6 first. The provider's name resolves to both address families; on a
+#   network with a broken IPv6 route the connection attempt hangs until the
+#   operating system gives up -- 21 seconds on Windows -- before falling back
+#   to IPv4. That was paid on every new connection.
+#
+# So one pooled client is shared across calls, with a keep-alive longer than
+# the gap between steps, and connections go over IPv4, which every provider
+# serves. RESUME_AGENT_ALLOW_IPV6=1 undoes the second for an IPv6-only network.
+
+ALLOW_IPV6_ENV_VAR = "RESUME_AGENT_ALLOW_IPV6"
+KEEPALIVE_S = 120.0
+
+
+def _local_address() -> str | None:
+    """"0.0.0.0" binds the socket to IPv4, so an IPv6 route is never tried."""
+    allow = os.environ.get(ALLOW_IPV6_ENV_VAR, "").strip().lower() in ("1", "true", "yes")
+    return None if allow else "0.0.0.0"
+
+
+@cache
+def _shared_http_client(local_address: str | None) -> Any:
+    import httpx  # noqa: PLC0415
+
+    return httpx.Client(
+        transport=httpx.HTTPTransport(local_address=local_address),
+        limits=httpx.Limits(max_keepalive_connections=20, keepalive_expiry=KEEPALIVE_S),
+        # Only the connect timeout: a request's own timeout is the client
+        # library's (and a long generation must not be cut short here).
+        timeout=httpx.Timeout(None, connect=15.0),
+    )
+
+
+def shared_http_client() -> Any:
+    """The one sync client every model call shares (see above)."""
+    return _shared_http_client(_local_address())
+
+
+def _async_http_client() -> Any:
+    """An async client per model. Not shared: an async client belongs to the
+    event loop it first ran on, and the tests and the CLI use several."""
+    import httpx  # noqa: PLC0415
+
+    return httpx.AsyncClient(
+        transport=httpx.AsyncHTTPTransport(local_address=_local_address()),
+        limits=httpx.Limits(keepalive_expiry=KEEPALIVE_S),
+        timeout=httpx.Timeout(None, connect=15.0),
     )
 
 

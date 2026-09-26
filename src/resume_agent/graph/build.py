@@ -36,6 +36,7 @@ import logging
 from pathlib import Path
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.runnables.config import ContextThreadPoolExecutor
 from langgraph.graph import END, START, StateGraph
 
 from resume_agent.analyze import budget_for_profile
@@ -68,6 +69,9 @@ logger = logging.getLogger(__name__)
 # Spec 5: "layout cycle (`inspect_output` -> `select_content` or `render_latex`),
 # max 3 retries".
 MAX_LAYOUT_ATTEMPTS = 3
+
+# How many lines of a resume are fact-checked at once (see `node_verify`).
+MAX_PARALLEL_CHECKS = 8
 
 
 # ===========================================================================
@@ -199,12 +203,26 @@ def node_verify(state: AgentState, llm: BaseChatModel | None = None) -> dict:
     vocabulary = profile.skill_vocabulary()
     attempts = state.get("grounding_attempts", 0)
 
-    kept, critiques, dropped = [], [], []
-    for candidate in state.get("tailored", []):
-        source = profile.bullet_by_id(candidate.source_id)
-        result = verify_grounding(
+    candidates = state.get("tailored", [])
+    sources = [profile.bullet_by_id(candidate.source_id) for candidate in candidates]
+
+    # Checked side by side, not one after another. Each check is independent,
+    # and a line's check is a model call: in sequence, a twelve-line resume
+    # spent minutes here. The context-copying pool keeps each call's events
+    # flowing to the run page, and the results come back in order, so what is
+    # kept, retried and dropped is decided exactly as before.
+    def check(pair):
+        candidate, source = pair
+        return verify_grounding(
             candidate, source, vocabulary, judge=state["options"].use_judge, llm=llm
         )
+
+    workers = max(1, min(MAX_PARALLEL_CHECKS, len(candidates)))
+    with ContextThreadPoolExecutor(max_workers=workers) as pool:
+        results = list(pool.map(check, list(zip(candidates, sources, strict=True))))
+
+    kept, critiques, dropped = [], [], []
+    for candidate, source, result in zip(candidates, sources, results, strict=True):
         if result.passed:
             kept.append(candidate)
             continue
