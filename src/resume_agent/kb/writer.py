@@ -29,6 +29,7 @@ A profile that does not load is never a state this module leaves behind.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -297,7 +298,7 @@ def scaffold_profile(source: Path, target: Path) -> None:
 # documents the schema rather than any particular person's stack.
 _EMPTY_IDENTITY = """\
 name: {name}
-email: ""
+email: {email}
 phone: ""
 location: ""
 links: []
@@ -333,7 +334,12 @@ This README is skipped when the profile loads, so it is safe to keep here.
 """
 
 
-def create_empty_profile(target: Path, *, name: str = "") -> None:
+def _scalar(text: str) -> str:
+    """`text` as a YAML value that survives a colon, a quote or a `#` in it."""
+    return json.dumps(text.strip(), ensure_ascii=False)
+
+
+def create_empty_profile(target: Path, *, name: str = "", email: str = "") -> None:
     """Start a profile with nothing in it but you.
 
     The counterpart to `scaffold_profile`, and the better default of the two.
@@ -342,6 +348,10 @@ def create_empty_profile(target: Path, *, name: str = "") -> None:
     profile you intend to *use* begins as a stranger's career, and every job,
     project and narrative in it has to be found and deleted before your own
     material is the only thing in there. Starting empty has no such step.
+
+    `name` and `email` are whatever is already known about the person -- on the
+    hosted site, their Google account -- so the first form they see is not
+    asking for something the site was just told.
     """
     target = Path(target)
     if target.exists():
@@ -352,7 +362,7 @@ def create_empty_profile(target: Path, *, name: str = "") -> None:
     (target / NARRATIVES_DIR).mkdir(parents=True)
 
     written = {
-        IDENTITY_FILE: _EMPTY_IDENTITY.format(name=name.strip() or '""'),
+        IDENTITY_FILE: _EMPTY_IDENTITY.format(name=_scalar(name), email=_scalar(email)),
         SKILLS_FILE: _EMPTY_SKILLS,
         f"{NARRATIVES_DIR}/README.md": _EMPTY_NARRATIVES_README,
     }

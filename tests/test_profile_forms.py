@@ -291,10 +291,10 @@ def test_a_deletion_that_would_break_the_profile_is_undone(profile: Path) -> Non
 # ===========================================================================
 
 
-def test_skills_are_offered_as_a_closed_list(profile: Path) -> None:
-    """The strongest argument for forms: a combobox backed by the live
-    vocabulary means `_skills_resolve_to_vocabulary` cannot be violated by
-    picking from it."""
+def test_tools_are_suggested_from_skills_and_open_to_new_ones(profile: Path) -> None:
+    """Suggested from the live vocabulary, as before, but no longer closed: a
+    tool typed that Skills lacks is added to Skills on save
+    (`add_missing_skills`), so `_skills_resolve_to_vocabulary` still holds."""
     document = read_document(profile, AN_ENTRY)
 
     skills_field = next(
@@ -302,7 +302,7 @@ def test_skills_are_offered_as_a_closed_list(profile: Path) -> None:
     )["fields"]
     technologies = next(f for f in skills_field if f["name"] == "skills")
 
-    assert technologies["closed"] is True and technologies["suggest"] == "skills"
+    assert technologies["closed"] is False and technologies["suggest"] == "skills"
     assert "Kubernetes" in document["suggestions"]["skills"]
 
 
@@ -314,3 +314,56 @@ def test_a_broken_profile_still_yields_a_usable_form(profile: Path) -> None:
     document = read_document(profile, AN_ENTRY)
     assert document["spec"]
     assert document["suggestions"]["skills"] == []
+
+
+# ===========================================================================
+# Tools named in a job join Skills (found in the Basic-mode audit)
+# ===========================================================================
+
+
+def test_a_new_tool_named_in_a_job_is_added_to_skills(profile: Path) -> None:
+    """A newcomer's first job could not be saved: naming Python in it was
+    refused because Skills did not list Python yet."""
+    from resume_agent.kb.forms import add_missing_skills, read_document  # noqa: PLC0415
+
+    relative = "experience/halvorsen_bright.yaml"
+    data = read_document(profile, relative)["data"]
+    data["tech"] = [*data["tech"], "Nagios"]
+    data["bullets"][0]["skills"] = [*data["bullets"][0].get("skills", []), "Zabbix", "nagios"]
+
+    added = add_missing_skills(profile, relative, data)
+
+    assert added == ["Nagios", "Zabbix"], "each once, in the order named"
+    rows = read_document(profile, "skills.yaml")["data"]["skills"]
+    skills = {row["canonical"]: row for row in rows}
+    assert skills["Nagios"]["category"] == "tools"
+    assert skills["Nagios"]["level"] == "working", "never silently 'expert'"
+    write_document(profile, relative, data)  # and now the job itself saves
+
+
+def test_a_known_tool_or_alias_adds_nothing(profile: Path) -> None:
+    from resume_agent.kb.forms import add_missing_skills, read_document  # noqa: PLC0415
+
+    relative = "experience/halvorsen_bright.yaml"
+    data = read_document(profile, relative)["data"]
+    before = read_document(profile, "skills.yaml")["data"]
+
+    assert add_missing_skills(profile, relative, data) == []
+    assert read_document(profile, "skills.yaml")["data"] == before
+
+
+def test_only_job_and_project_forms_add_skills(profile: Path) -> None:
+    from resume_agent.kb.forms import add_missing_skills, read_document  # noqa: PLC0415
+
+    data = read_document(profile, "identity.yaml")["data"]
+
+    assert add_missing_skills(profile, "identity.yaml", data) == []
+
+
+def test_the_basic_form_hides_the_expert_fields() -> None:
+    """What someone writing their first job needs is what they did and when."""
+    from resume_agent.kb.forms import BULLET_FIELDS  # noqa: PLC0415
+
+    shown = {f.name for f in BULLET_FIELDS if not f.advanced}
+
+    assert shown == {"canonical", "skills"}

@@ -1855,7 +1855,7 @@ async function loadApplications() {
     `<table class="apps"><thead><tr><th>Date</th><th>Company</th><th>Role</th>` +
     `<th class="num">Fit</th><th class="num">${account ? "Resume" : "Outcome"}</th></tr></thead><tbody>` +
     rows.map((r) => `<tr>` +
-      `<td>${esc(r.applied_on.slice(0, 10))}</td>` +
+      `<td>${esc(r.applied_on.includes("T") ? when(r.applied_on, false) : r.applied_on)}</td>` +
       `<td>${esc(r.company)}</td>` +
       `<td>${esc(r.title)}</td>` +
       `<td class="num">${r.overall_fit != null ? Math.round(r.overall_fit * 100) + "%" : "—"}</td>` +
@@ -2613,11 +2613,12 @@ async function showFileHistory() {
 
 /* "2026-09-25T10:39:03.529842Z" as the reader's own date and time. Trimmed to
    milliseconds first: not every browser parses six fractional digits. */
-function when(iso) {
+function when(iso, withTime = true) {
   const date = new Date(iso.replace(/(\.\d{3})\d+/, "$1"));
-  return isNaN(date) ? iso : date.toLocaleString(undefined, {
-    dateStyle: "medium", timeStyle: "short",
-  });
+  if (isNaN(date)) return iso;
+  return withTime
+    ? date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+    : date.toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
 function setRawMode(on) {

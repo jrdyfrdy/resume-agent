@@ -65,6 +65,26 @@ CONFIDENCE = ("verified", "approximate", "claim")
 SENIORITY = ("intern", "junior", "mid", "senior", "staff", "lead")
 SKILL_LEVEL = ("expert", "working", "familiar")
 
+# A skill's category, as the Skills section prints it. The keys are
+# `latex/context.py`'s curated headings plus "tools", where a technology first
+# lands when you name it in a job; the page shows the heading, not the key.
+SKILL_CATEGORY_CHOICES: tuple[tuple[str, str], ...] = (
+    ("language", "Languages"),
+    ("framework", "Frameworks"),
+    ("web", "Web Development"),
+    ("database", "Databases"),
+    ("ai_data", "AI & Data Science"),
+    ("data", "Data"),
+    ("infrastructure", "Infrastructure"),
+    ("automation", "Automation"),
+    ("hardware", "Hardware"),
+    ("dev_tools", "Developer Tools"),
+    ("design", "Design & Modelling"),
+    ("practice", "Practices"),
+    ("tools", "Tools"),
+)
+SKILL_CATEGORIES = tuple(value for value, _label in SKILL_CATEGORY_CHOICES)
+
 YEAR_MONTH = r"^\d{4}-(0[1-9]|1[0-2])$"
 
 
@@ -89,28 +109,39 @@ class Field:
     # it is what keeps a comment attached to the bullet it describes when
     # another bullet is inserted above it.
     key: str | None = None
+    # Shown only with the page's Advanced switch on. What someone writing their
+    # first job needs is what they did and when; themes, confidence and the rest
+    # are levers for people tuning selection, and a newcomer met them as a wall
+    # of jargon on their very first form (found in the Basic-mode audit).
+    advanced: bool = False
+    # What a new row starts with. Without it an empty `select` shows its first
+    # option -- which, for a skill's level, silently claimed "expert".
+    default: str = ""
+    # Display text for a select's choices, as (value, label) pairs; a choice
+    # with no label here is shown as its value.
+    labels: tuple[tuple[str, str], ...] = ()
 
 
 BULLET_FIELDS: tuple[Field, ...] = (
     Field("canonical", "What you did", "textarea", required=True,
-          help="One achievement, written fully and truthfully. Every rewrite the agent "
-               "produces is a rephrasing of this sentence and nothing more.",
-          placeholder="Cut p95 checkout latency from 820ms to 50ms across 12 endpoints by "
-                      "repartitioning the events table on user_id."),
-    Field("metrics", "Numbers", "keyvalue",
-          help="The ONLY numbers a rewrite of this bullet may use. A figure that is not "
-               "here, and not derivable from here, is treated as invented and the bullet "
-               "is dropped."),
-    Field("skills", "Technologies", "chips", suggest="skills", closed=True,
-          help="Must already exist in Skills. That is what stops the agent quietly "
-               "upgrading “a queue” into “Kafka”."),
-    Field("themes", "Themes", "chips", suggest="themes",
+          help="One thing you did, in a sentence, with any numbers you know. Resumes "
+               "reword this; they never add to it.",
+          placeholder="Cut report prep time by 70% by automating the daily outage report "
+                      "in Python."),
+    Field("metrics", "Numbers", "keyvalue", advanced=True,
+          help="Extra figures a rewrite may use besides those in the sentence above. A "
+               "figure that is in neither is treated as invented and the line is dropped."),
+    Field("skills", "Tools used", "chips", suggest="skills",
+          help="Languages, tools or technologies this used. New ones are added to your "
+               "Skills when you save."),
+    Field("themes", "Themes", "chips", suggest="themes", advanced=True,
           help="Free grouping. At most three bullets per theme reach the page, so spread "
                "them or most of your bullets can never be picked together."),
-    Field("seniority_signal", "Seniority signal", "select", choices=("",) + SENIORITY),
-    Field("confidence", "Confidence", "select", choices=CONFIDENCE,
-          help="“claim” is excluded when you run with strict."),
-    Field("evidence", "Evidence", "textarea",
+    Field("seniority_signal", "Seniority signal", "select", choices=("",) + SENIORITY,
+          advanced=True),
+    Field("confidence", "Confidence", "select", choices=CONFIDENCE, advanced=True,
+          default="verified", help="“claim” is excluded when you run with strict."),
+    Field("evidence", "Evidence", "textarea", advanced=True,
           help="Where you could prove it. Never printed — it is for you, at interview.",
           placeholder="PR #4412; Grafana p95 dashboard, Nov 2024"),
 )
@@ -118,7 +149,9 @@ BULLET_FIELDS: tuple[Field, ...] = (
 _ENTRY_TAIL: tuple[Field, ...] = (
     Field("start", "Started", "month", required=True),
     Field("end", "Ended", "month", help="Leave empty for “Present”."),
-    Field("tech", "Technologies", "chips", suggest="skills", closed=True),
+    Field("tech", "Tools used", "chips", suggest="skills",
+          help="Everything this job or project used. New ones are added to your Skills "
+               "when you save."),
     Field("bullets", "Achievements", "objects", fields=BULLET_FIELDS, key="id"),
 )
 
@@ -135,7 +168,7 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
             Field("url", "Address", "text", required=True,
                   placeholder="https://github.com/you"),
         )),
-        Field("work_authorization", "Work authorisation", "text"),
+        Field("work_authorization", "Work authorisation", "text", advanced=True),
     )),
     "education": ("keyed_list", "education", (
         Field("education", "Education", "objects", key="institution", fields=(
@@ -144,7 +177,7 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
             Field("location", "Location", "text", required=True),
             Field("start", "Started", "month", required=True),
             Field("end", "Ended", "month"),
-            Field("gpa", "GPA", "text", help="Written as text, e.g. 3.7."),
+            Field("gpa", "GPA", "text", help="Written as text, e.g. 3.7. Optional."),
             Field("coursework", "Coursework", "chips", suggest="coursework"),
             Field("honors", "Honours", "chips", suggest="honors",
                   help="Dean's list, scholarships, latin honours. Printed under the "
@@ -157,12 +190,15 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
             Field("canonical", "Name", "text", required=True,
                   help="Display casing — this is what prints on the resume.",
                   placeholder="PostgreSQL"),
-            Field("aliases", "Also written as", "chips", suggest="aliases",
+            Field("aliases", "Also written as", "chips", suggest="aliases", advanced=True,
                   help="How postings might spell it. Used to match a posting to this "
                        "skill, and accepted wherever you name it elsewhere."),
-            Field("category", "Category", "text", required=True, placeholder="data"),
-            Field("level", "Level", "select", required=True, choices=SKILL_LEVEL),
-            Field("first_used", "First used", "month"),
+            Field("category", "Listed under", "select", required=True,
+                  choices=SKILL_CATEGORIES, labels=SKILL_CATEGORY_CHOICES, default="tools",
+                  help="The heading it prints under in the Skills section."),
+            Field("level", "Level", "select", required=True, choices=SKILL_LEVEL,
+                  default="working"),
+            Field("first_used", "First used", "month", advanced=True),
         )),
     )),
     "certifications": ("keyed_list", "certifications", (
@@ -365,6 +401,53 @@ def skill_usage(profile_dir: Path) -> dict[str, int]:
         total += sum(counts.get(alias.lower(), 0) for alias in skill.aliases)
         rolled[skill.canonical] = total
     return rolled
+
+
+ENTRY_ROLES = ("experience", "project", "leadership", "publication")
+
+# Where a technology lands when it is first named in a job rather than added
+# in Skills. It prints under "Tools"; the Skills form can move it.
+NEW_SKILL_CATEGORY = "tools"
+
+
+def add_missing_skills(profile_dir: Path, relative: str, data: dict[str, Any]) -> list[str]:
+    """Add to Skills every tool an entry's form names that Skills does not have.
+
+    Found in the Basic-mode audit: a newcomer's very first job could not be
+    saved, because naming "Python" in it was refused -- Skills is the list of
+    technologies a rewrite may name, and Python was not on it yet -- with an
+    error about a file they had never heard of, and their typing lost when
+    they went to fix it. The rule is right; the order was wrong. When *you*
+    write a technology into your own job, that is you stating it, so it joins
+    your skills (at "working" level, under "Tools") and the save goes ahead.
+    The chat has always done the same for technologies you describe.
+
+    Returns the names added; nothing is written when there are none. Only entry
+    forms name tools; any other file is left alone.
+    """
+    if document_role(relative) not in ENTRY_ROLES:
+        return []
+    named = list(data.get("tech") or [])
+    for bullet in data.get("bullets") or []:
+        named += bullet.get("skills") or []
+
+    profile = load_profile(Path(profile_dir))
+    known = profile.skill_vocabulary()
+    missing: list[str] = []
+    for name in (str(n).strip() for n in named):
+        if name and name.lower() not in known | {m.lower() for m in missing}:
+            missing.append(name)
+    if not missing:
+        return []
+
+    document = read_document(Path(profile_dir), SKILLS_FILE)
+    rows = document["data"].setdefault("skills", [])
+    rows.extend(
+        {"canonical": name, "aliases": [], "category": NEW_SKILL_CATEGORY, "level": "working"}
+        for name in missing
+    )
+    write_document(Path(profile_dir), SKILLS_FILE, document["data"])
+    return missing
 
 
 # ---------------------------------------------------------------------------

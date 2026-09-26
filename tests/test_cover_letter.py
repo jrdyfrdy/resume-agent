@@ -271,6 +271,34 @@ def test_grounding_allows_numbers_from_any_bullet(example_profile: Profile) -> N
     assert verify_letter_grounding(across_two, example_profile).passed
 
 
+def test_the_letter_may_name_the_employer_and_the_candidates_own_jobs(
+    example_profile: Profile,
+) -> None:
+    """Found in an audit. Company names are not technologies: "Converge" is the
+    employer being applied to and the candidate's own employer is on record,
+    yet both were refused, so nearly every real letter was rejected three times
+    and abandoned."""
+    from resume_agent.models.job import JobSpec, JobSpecFields  # noqa: PLC0415
+
+    own = example_profile.experience[0]
+    job = JobSpec.from_fields(JobSpecFields(
+        company="Converge ICT Solutions", title="Network Automation Intern", seniority="junior",
+        domain="telecom", requirements=[], responsibilities=[], ats_keywords=[],
+        culture_signals=[], tone="formal", red_flags=[],
+    ), "raw")
+    naming = letter(
+        hook="Converge ICT Solutions is automating its network operations.",
+        proof_one=f"At {own.org} I worked as {own.title}.",
+    )
+
+    assert verify_letter_grounding(naming, example_profile, job).passed
+
+    still_invented = letter(proof_two="At Converge I would build on my Cassandra work.")
+    result = verify_letter_grounding(still_invented, example_profile, job)
+    assert result.passed is False, "a technology still has to be on record"
+    assert "cassandra" in result.critique.lower()
+
+
 # ===========================================================================
 # DoD 3: consistent with the resume's bullets
 # ===========================================================================

@@ -210,6 +210,8 @@ class SaveResult(BaseModel):
 
     ok: bool
     error: str | None = None
+    # Tools the save added to Skills because a job or project named them.
+    added_skills: list[str] = Field(default_factory=list)
     # Where the previous text went. `profile/` is gitignored, so this is the
     # only undo that exists, and the editor says so out loud after a save.
     backup: str | None = None

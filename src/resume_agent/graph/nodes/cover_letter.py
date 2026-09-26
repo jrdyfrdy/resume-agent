@@ -84,12 +84,22 @@ def verify_length(letter: CoverLetter) -> LetterVerification:
     )
 
 
-def verify_letter_grounding(letter: CoverLetter, profile: Profile) -> LetterVerification:
+def verify_letter_grounding(
+    letter: CoverLetter, profile: Profile, job: JobSpec | None = None
+) -> LetterVerification:
     """Numbers and technologies, against the whole knowledge base.
 
     A letter draws on several achievements, so the allowed set is the union of
     every bullet's metrics and canonical text -- unlike a rewritten bullet,
     which is checked against its own source alone.
+
+    Plus the names a letter is *supposed* to use, which are not technologies:
+    the company and role being applied for, and the person's own employers,
+    titles, projects, schools and places (`_names_on_record`). Found in an
+    audit: without them, "Converge" -- the employer being applied to -- and
+    "Globe Telecom" -- the candidate's own -- were refused as unrecorded
+    technologies, so nearly every real letter was rejected three times and
+    abandoned.
     """
     all_metrics: dict[str, object] = {}
     for index, bullet in enumerate(profile.all_bullets()):
@@ -98,7 +108,9 @@ def verify_letter_grounding(letter: CoverLetter, profile: Profile) -> LetterVeri
             # collide and silently narrow the allowed set.
             all_metrics[f"{index}_{key}"] = value
 
-    corpus = " ".join(b.canonical for b in profile.all_bullets())
+    corpus = " ".join(
+        [*(b.canonical for b in profile.all_bullets()), _names_on_record(profile, job)]
+    )
     body = letter.body()
 
     bad_numbers = unsupported_numbers(body, all_metrics, corpus)  # type: ignore[arg-type]
@@ -129,6 +141,19 @@ def verify_letter_grounding(letter: CoverLetter, profile: Profile) -> LetterVeri
         )
 
     return LetterVerification.ok()
+
+
+def _names_on_record(profile: Profile, job: JobSpec | None) -> str:
+    """Every name the letter may use that is not a claim of skill."""
+    names: list[str | None] = [profile.identity.name, profile.identity.location]
+    if job is not None:
+        names += [job.company, job.title]
+    for entry in profile.entries():
+        names.append(entry.label)
+        names += [getattr(entry, field, None) for field in ("title", "role", "location", "venue")]
+    for school in profile.education:
+        names += [school.institution, school.degree, school.location]
+    return " ".join(name for name in names if isinstance(name, str) and name)
 
 
 def verify_consistency(
@@ -187,11 +212,12 @@ def verify_cover_letter(
     *,
     use_judge: bool = True,
     llm: BaseChatModel | None = None,
+    job: JobSpec | None = None,
 ) -> LetterVerification:
     """Run the checks cheapest-first and return the first failure."""
     for check in (
         lambda: verify_length(letter),
-        lambda: verify_letter_grounding(letter, profile),
+        lambda: verify_letter_grounding(letter, profile, job),
     ):
         result = check()
         if not result.passed:
@@ -286,6 +312,7 @@ def verify_cover_letter_node(state: AgentState, llm: BaseChatModel | None = None
         resume_bullets,
         use_judge=state["options"].use_judge,
         llm=llm,
+        job=state.get("job_spec"),
     )
     if result.passed:
         return {"letter_verified": True}

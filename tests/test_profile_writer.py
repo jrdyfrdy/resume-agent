@@ -337,6 +337,15 @@ def test_an_empty_profile_may_omit_the_name(tmp_path: Path) -> None:
     assert load_profile(target).identity.name == ""
 
 
+def test_an_empty_profile_keeps_awkward_names_and_the_email(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Jo: \"JJ\" #1", email="jo@example.com")
+
+    identity = load_profile(target).identity
+    assert identity.name == 'Jo: "JJ" #1'
+    assert identity.email == "jo@example.com"
+
+
 def test_creating_over_an_existing_directory_is_refused(tmp_path: Path) -> None:
     target = tmp_path / "fresh"
     target.mkdir()

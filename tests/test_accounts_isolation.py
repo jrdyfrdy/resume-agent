@@ -252,6 +252,9 @@ def test_a_new_person_has_no_profile_until_they_make_one(world: World) -> None:
     assert created.json()["profile"] == alex.id
     assert [p["name"] for p in alex.get("/api/profiles").json()] == [alex.id]
     assert "identity.yaml" in world.multi.db.profile_files(alex.id)
+    # The site already knows their email; the first form should not ask again.
+    detail = alex.get("/api/profile/detail", params={"profile": alex.id}).json()
+    assert detail["email"] == "alex@example.com"
 
 
 def test_each_person_sees_only_their_own(alex_and_blake) -> None:
@@ -348,7 +351,7 @@ def test_a_save_is_stored_and_versioned(world: World, alex_and_blake) -> None:
               "text": text.replace("Alex Lee", "Alex Q. Lee")},
     )
 
-    assert saved.json() == {"ok": True, "error": None, "backup": None}
+    assert saved.json() == {"ok": True, "error": None, "backup": None, "added_skills": []}
     assert "Alex Q. Lee" in world.multi.db.profile_files(alex.id)["identity.yaml"]
     history = world.multi.db.profile_history(alex.id, "identity.yaml")
     assert len(history) == 2, "the creation, then the edit"

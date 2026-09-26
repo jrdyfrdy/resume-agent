@@ -33,6 +33,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -90,13 +91,14 @@ from resume_agent.chat.session import route as route_message
 from resume_agent.graph.build import build_graph, initial_state
 from resume_agent.graph.state import RunOptions
 from resume_agent.kb.forms import (
+    add_missing_skills,
     create_entry,
     delete_document,
     read_document,
     skill_usage,
     write_document,
 )
-from resume_agent.kb.loader import ProfileLoadError, load_profile
+from resume_agent.kb.loader import SKILLS_FILE, ProfileLoadError, load_profile
 from resume_agent.kb.writer import (
     ProfileWriteError,
     create_empty_profile,
@@ -173,6 +175,79 @@ def resolve_mode() -> Mode:
             f"set {DEMO_ENV_VAR} or {MULTIUSER_ENV_VAR}, not both: they are different sites"
         )
     return "multiuser" if multi else "demo" if demo_mode() else "local"
+
+
+def readable_error(message: str, directory: Path) -> str:
+    """A refused save, as the person should read it.
+
+    The writer's messages are written for the command line: the absolute path
+    of the profile (on the hosted site, a server folder named after an account
+    id), and Pydantic's "1 validation error for Profile" framing. Found in the
+    audit reaching the page verbatim. The substance -- which field, what is
+    wrong -- is kept; the plumbing is not.
+    """
+    text = message
+    staging = directory.parent / f".{directory.name}.staging"
+    for root in (staging, directory):
+        for spelling in {str(root), root.as_posix()}:
+            text = text.replace(spelling + "\\", "").replace(spelling + "/", "")
+            text = text.replace(spelling, "your career file")
+    text = re.sub(r"^profile at your career file is invalid:\s*", "", text)
+    text = re.sub(r"\s*\[type=[^\]]*\]", "", text)
+
+    lines: list[str] = []
+    for line in text.splitlines():
+        if re.match(r"\s*\d+ validation errors? for \w+\s*$", line):
+            continue
+        if "errors.pydantic.dev" in line:
+            continue
+        if line.startswith("  ") and lines and not lines[-1].startswith("  "):
+            # Pydantic puts a field on one line and its problem, indented, on
+            # the next. One line each reads as a list of things to fix.
+            lines[-1] = f"{_field_words(lines[-1])} {_problem_words(line.strip())}"
+            continue
+        lines.append(line.strip())
+    return "\n".join(line for line in lines if line) or message
+
+
+# The form's own labels, for a field Pydantic names by its key.
+_FIELD_WORDS = {
+    "canonical": "What you did", "start": "Started", "end": "Ended", "org": "Employer",
+    "title": "Title", "location": "Location", "name": "Name", "email": "Email",
+    "phone": "Phone", "category": "Listed under", "level": "Level", "degree": "Degree",
+    "institution": "School", "venue": "Published in", "issuer": "Issuer",
+}
+_COLLECTION_WORDS = {
+    "experience": "Job", "projects": "Project", "leadership": "Leadership role",
+    "publications": "Publication", "education": "School", "skills": "Skill",
+    "bullets": "achievement",
+}
+
+
+def _field_words(path: str) -> str:
+    """`experience.0.bullets.1.canonical` -> "Job 1, achievement 2: What you did"."""
+    parts = path.strip().split(".")
+    if not all(re.fullmatch(r"[\w-]+", part) for part in parts):
+        return path.strip() + ":"
+    where = [
+        f"{_COLLECTION_WORDS[part]} {int(nxt) + 1}"
+        for part, nxt in zip(parts, parts[1:], strict=False)
+        if part in _COLLECTION_WORDS and nxt.isdigit()
+    ]
+    last = parts[-1]
+    field = "" if last.isdigit() else _FIELD_WORDS.get(last, last.replace("_", " ").capitalize())
+    label = ", ".join(where)
+    return f"{label}: {field}" if label and field else label or field
+
+
+def _problem_words(problem: str) -> str:
+    if "\\d{4}-(0[1-9]|1[0-2])" in problem:
+        return "should be a month, like 2024-06."
+    return {
+        "Field required": "is required.",
+        "Extra inputs are not permitted": "is not a field this can have.",
+        "String should have at least 1 character": "cannot be empty.",
+    }.get(problem, f"— {problem[0].lower()}{problem[1:]}" if problem else "")
 
 
 def resolve_profile_dir(name: str, root: Path | None = None) -> Path:
@@ -498,7 +573,7 @@ def create_app(
             except ProfileWriteError as exc:
                 # Invalid content is an ordinary part of editing YAML, so it is
                 # a result rather than an error status. The file is unchanged.
-                return SaveResult(ok=False, error=str(exc))
+                return SaveResult(ok=False, error=readable_error(str(exc), directory))
 
         logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
         return SaveResult(ok=True, backup=backup_shown(backup))
@@ -528,16 +603,28 @@ def create_app(
             except ProfileWriteError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+            # Tools named in a job or project join Skills first (see
+            # `add_missing_skills`), and leave again if the save still fails.
+            skills_before = read_profile_file(directory, SKILLS_FILE)
+            try:
+                added = add_missing_skills(directory, request.path, request.data)
+            except ProfileLoadError:
+                added = []  # the file does not load yet; the save below says why
+            except ProfileWriteError as exc:
+                return SaveResult(ok=False, error=readable_error(str(exc), directory))
+
             try:
                 backup = write_document(directory, request.path, request.data)
             except ProfileWriteError as exc:
+                if added:
+                    write_profile_file(directory, SKILLS_FILE, skills_before)
                 # Same contract as the text editor: content that does not
                 # validate is a result, not an error status, and the file is
                 # unchanged.
-                return SaveResult(ok=False, error=str(exc))
+                return SaveResult(ok=False, error=readable_error(str(exc), directory))
 
         logger.info("saved %s in %s (backup: %s)", request.path, request.profile, backup)
-        return SaveResult(ok=True, backup=backup_shown(backup))
+        return SaveResult(ok=True, backup=backup_shown(backup), added_skills=added)
 
     @app.post("/api/profile/entry", response_model=ProfileFile, status_code=201)
     async def add_entry(request: CreateEntryRequest, http: Request) -> ProfileFile:
@@ -599,15 +686,17 @@ def create_app(
                 raise HTTPException(status_code=400, detail="only the example can be copied")
             source = resolve_profile_dir(request.source)
 
-        target_of = (
-            nullcontext(Path.cwd() / request.name)
-            if multi is None
-            else multi.workspaces.profile(signed_in_user(http))
-        )
+        name, email = request.display_name, ""
+        if multi is None:
+            target_of = nullcontext(Path.cwd() / request.name)
+        else:
+            user = signed_in_user(http)
+            target_of = multi.workspaces.profile(user)
+            name, email = name.strip() or user.name, user.email
         async with target_of as target:
             try:
                 if source is None:
-                    create_empty_profile(target, name=request.display_name)
+                    create_empty_profile(target, name=name, email=email)
                 else:
                     scaffold_profile(source, target)
                 return ProfileFileList(profile=target.name, files=relative_profile_files(target))
@@ -623,7 +712,9 @@ def create_app(
             return [
                 ApplicationSummary(
                     id=None,
-                    applied_on=row["created_at"][:10],
+                    # The whole timestamp: the page shows it as the reader's own
+                    # date, which a UTC day would get wrong for half the world.
+                    applied_on=row["created_at"],
                     company=row["company"] or "",
                     title=row["title"] or "",
                     overall_fit=row["overall_fit"],

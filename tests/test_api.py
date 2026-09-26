@@ -837,24 +837,50 @@ def test_a_file_no_form_understands_is_a_400(client: TestClient) -> None:
 
 
 def test_a_form_save_that_breaks_the_profile_is_refused(writable_profile) -> None:
-    """The cross-file failure, through the API: a technology no skill resolves.
-    A refused save must not touch disk, so the bytes are asserted too."""
-    client, name, directory = writable_profile
-    path = "experience/halvorsen_bright.yaml"
-    before = (directory / "experience" / "halvorsen_bright.yaml").read_bytes()
+    """The cross-file failure, through the API: removing a skill an achievement
+    still names. A refused save must not touch disk, so the bytes are asserted.
 
-    document = client.get("/api/profile/form", params={"path": path, "profile": name}).json()
-    document["data"]["bullets"][0]["skills"] = ["not-a-real-skill"]
+    (It used to be a job naming an unknown technology, which is now added to
+    Skills instead -- see the next test for that path failing cleanly.)"""
+    client, name, directory = writable_profile
+    before = {p: (directory / p).read_bytes()
+              for p in ("skills.yaml", "experience/halvorsen_bright.yaml")}
+
+    document = client.get(
+        "/api/profile/form", params={"path": "skills.yaml", "profile": name}
+    ).json()
+    document["data"]["skills"] = [
+        row for row in document["data"]["skills"] if row["canonical"] != "Kubernetes"
+    ]
 
     response = client.put(
         "/api/profile/form",
-        json={"profile": name, "path": path, "data": document["data"]},
+        json={"profile": name, "path": "skills.yaml", "data": document["data"]},
     )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["ok"] is False and "not-a-real-skill" in body["error"]
-    assert (directory / "experience" / "halvorsen_bright.yaml").read_bytes() == before
+    assert body["ok"] is False and "kubernetes" in body["error"].lower()
+    assert {p: (directory / p).read_bytes() for p in before} == before
+
+
+def test_a_refused_job_takes_back_the_skills_it_added(writable_profile) -> None:
+    """A new tool joins Skills before the job is written. If the job is then
+    refused for another reason, Skills goes back to how it was."""
+    client, name, directory = writable_profile
+    path = "experience/halvorsen_bright.yaml"
+    skills_before = (directory / "skills.yaml").read_text(encoding="utf-8")
+
+    document = client.get("/api/profile/form", params={"path": path, "profile": name}).json()
+    document["data"]["tech"] = [*document["data"]["tech"], "Nagios"]
+    document["data"]["start"] = "last spring"
+
+    body = client.put(
+        "/api/profile/form", json={"profile": name, "path": path, "data": document["data"]}
+    ).json()
+
+    assert body["ok"] is False
+    assert (directory / "skills.yaml").read_text(encoding="utf-8") == skills_before
 
 
 def test_a_form_save_with_a_bad_path_is_a_400(client: TestClient) -> None:
@@ -1230,3 +1256,45 @@ def test_a_run_whose_task_died_ends_its_stream() -> None:
     assert events[-1]["kind"] == "error"
     assert "stopped unexpectedly" in events[-1]["detail"]
     assert client.get(f"/api/runs/{run_id}").json()["status"] == "failed"
+
+
+# ===========================================================================
+# Found in the Basic-mode audit
+# ===========================================================================
+
+
+def test_saving_a_job_that_names_a_new_tool_adds_it_to_skills(writable_profile) -> None:
+    client, profile, _directory = writable_profile
+    path = "experience/halvorsen_bright.yaml"
+    form = client.get("/api/profile/form", params={"profile": profile, "path": path}).json()
+    data = form["data"]
+    data["tech"] = [*data["tech"], "Nagios"]
+
+    saved = client.put("/api/profile/form", json={"profile": profile, "path": path, "data": data})
+
+    assert saved.json()["ok"] is True, saved.json()["error"]
+    assert saved.json()["added_skills"] == ["Nagios"]
+    skills = client.get(
+        "/api/profile/form", params={"profile": profile, "path": "skills.yaml"}
+    ).json()["data"]["skills"]
+    assert "Nagios" in {row["canonical"] for row in skills}
+
+
+def test_a_refused_save_reads_as_a_sentence_not_a_traceback(writable_profile) -> None:
+    """The writer's message used to reach the page verbatim: the server's folder
+    path and Pydantic's "N validation errors for Profile" framing."""
+    client, profile, directory = writable_profile
+    path = "experience/halvorsen_bright.yaml"
+    form = client.get("/api/profile/form", params={"profile": profile, "path": path}).json()
+    data = {**form["data"], "start": "last spring"}
+
+    saved = client.put(
+        "/api/profile/form", json={"profile": profile, "path": path, "data": data}
+    ).json()
+
+    assert saved["ok"] is False
+    assert "Started should be a month" in saved["error"]
+    assert str(directory) not in saved["error"]
+    assert directory.as_posix() not in saved["error"]
+    assert "validation error for" not in saved["error"]
+    assert "errors.pydantic.dev" not in saved["error"]

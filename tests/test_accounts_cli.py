@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import logging.config
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from resume_agent.accounts.db import AccountsDB
-from resume_agent.cli import ExitCode, app
+from resume_agent.cli import ExitCode, app, server_log_config
 
 runner = CliRunner()
 
@@ -104,3 +106,19 @@ def test_what_serve_allows(monkeypatch) -> None:
 
     monkeypatch.setenv("RESUME_AGENT_DEMO", "1")
     assert serving_refusal("0.0.0.0") is None, "the demo has nothing to sign in to"
+
+
+def test_the_server_log_keeps_the_apps_own_lines() -> None:
+    """uvicorn only configures its own loggers; without this the app's INFO
+    lines -- which step a run is on, a line the fact-check dropped -- never
+    reached the host's log."""
+    package = logging.getLogger("resume_agent")
+    logging.config.dictConfig(server_log_config())
+    try:
+        assert logging.getLogger("resume_agent.graph.build").isEnabledFor(logging.INFO)
+        assert package.handlers
+    finally:
+        # Put it back, or pytest's log capture stops seeing the package.
+        package.handlers.clear()
+        package.propagate = True
+        package.setLevel(logging.NOTSET)

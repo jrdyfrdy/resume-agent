@@ -722,7 +722,31 @@ def serve(
         port=port,
         reload=reload,
         log_level="info",
+        log_config=server_log_config(),
     )
+
+
+def server_log_config() -> dict:
+    """uvicorn's own logging, plus this package's.
+
+    uvicorn configures only its loggers, so everything the app logs at INFO --
+    which step a run is on, a fact-check that dropped a line, a letter that was
+    abandoned -- went to a root logger with no handler and was lost. On a host
+    the deploy log is the only record there is, so those lines go to it too.
+    """
+    import copy  # noqa: PLC0415
+
+    from uvicorn.config import LOGGING_CONFIG  # noqa: PLC0415
+
+    config = copy.deepcopy(LOGGING_CONFIG)
+    config["formatters"]["app"] = {"format": "%(levelname)s:     %(name)s: %(message)s"}
+    config["handlers"]["app"] = {
+        "formatter": "app",
+        "class": "logging.StreamHandler",
+        "stream": "ext://sys.stderr",
+    }
+    config["loggers"]["resume_agent"] = {"handlers": ["app"], "level": "INFO", "propagate": False}
+    return config
 
 
 def serving_refusal(host: str, *, allow_unauthenticated: bool = False) -> str | None:
