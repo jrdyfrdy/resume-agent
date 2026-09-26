@@ -329,16 +329,17 @@ def test_a_broken_question_file_fails_at_load_time(tmp_path, monkeypatch, text, 
 # ===========================================================================
 
 
-def test_the_privacy_page_says_nothing_about_jev_until_a_use_is_on(monkeypatch) -> None:
+def test_the_privacy_page_names_jev_only_for_what_it_is_sent(monkeypatch) -> None:
     from resume_agent.accounts.auth import _jev_notice
 
     monkeypatch.setenv(decisions.API_KEY_ENV_VAR, KEY)
-    assert _jev_notice() == "", "switched on, but nothing uses it yet"
-
-    monkeypatch.setattr(decisions, "uses", lambda: ["the job ad, to check it is one"])
     notice = _jev_notice()
     assert "TypeSafe, through OpenRouter" in notice
-    assert "the job ad, to check it is one" in notice
+    for use in decisions.uses():
+        assert use in notice
+
+    monkeypatch.setattr(decisions, "uses", lambda: [])
+    assert _jev_notice() == "", "switched on, but nothing uses it"
 
     monkeypatch.delenv(decisions.API_KEY_ENV_VAR)
     assert _jev_notice() == "", "switched off"

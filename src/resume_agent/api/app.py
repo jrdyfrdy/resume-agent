@@ -81,6 +81,7 @@ from resume_agent.api.models import (
     build_profile_detail,
     summarise_state,
 )
+from resume_agent.api.posting_check import posting_refusal
 from resume_agent.chat.advise import advise
 from resume_agent.chat.extract import apply as apply_proposal_items
 from resume_agent.chat.extract import extract
@@ -703,6 +704,13 @@ def create_app(
 
     @app.post("/api/runs", response_model=RunCreated, status_code=202)
     async def start_run(request: RunRequest, http: Request) -> RunCreated:
+        # Before anything is counted or snapshotted, and outside the quota lock:
+        # a paste that is not a job ad is turned away without using up a run.
+        # A no-op when Jev is off; goes ahead if Jev cannot answer.
+        refusal = await asyncio.to_thread(posting_refusal, request.jd)
+        if refusal:
+            raise HTTPException(status_code=422, detail=refusal)
+
         if multi is not None:
             return await start_run_for(signed_in_user(http), request)
 

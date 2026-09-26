@@ -125,4 +125,7 @@ def uses() -> list[str]:
     Grows as each use is added, so the privacy page never claims more, or
     less, than the code does.
     """
-    return []
+    return [
+        # api/posting_check.py (M11 J2)
+        "each job ad you paste, to check it is one before a resume is made",
+    ]
