@@ -256,9 +256,26 @@ def test_every_schema_converts_for_an_openai_client(
 
 
 def bound_kwargs(chain: object) -> dict:
-    """The kwargs `with_structured_output` bound onto the underlying client."""
-    step = chain.steps[0] if hasattr(chain, "steps") else chain
-    return dict(getattr(step, "kwargs", {}))
+    """The kwargs `with_structured_output` bound onto the underlying client.
+
+    Found by walking the chain rather than assuming where the binding sits: the
+    helper settles each answer in a lambda around the call, and `include_raw`
+    puts the call itself inside a parallel `raw` branch. A lambda names the
+    runnables it uses in `.deps`, which is how LangChain draws it too.
+    """
+    from langchain_core.runnables import RunnableBinding  # noqa: PLC0415
+
+    queue = [chain]
+    while queue:
+        node = queue.pop(0)
+        if isinstance(node, RunnableBinding):
+            return dict(node.kwargs)
+        queue += list(getattr(node, "steps", None) or [])            # a sequence
+        queue += list((getattr(node, "steps__", None) or {}).values())  # a parallel map
+        queue += list(getattr(node, "deps", None) or [])             # a lambda
+        if getattr(node, "runnable", None) is not None:              # fallbacks
+            queue.append(node.runnable)
+    return {}
 
 
 def test_the_deepseek_path_sends_tools_rather_than_a_response_format(
@@ -305,9 +322,9 @@ def test_function_calling_is_what_anthropic_already_did(
     monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
     llm = build_chat_model()
 
-    assert bound_kwargs(structured_output(llm, JobSpecFields)) == bound_kwargs(
-        llm.with_structured_output(JobSpecFields)
-    )
+    helper = bound_kwargs(structured_output(llm, JobSpecFields))
+    assert "tools" in helper, "no binding found, so the comparison would prove nothing"
+    assert helper == bound_kwargs(llm.with_structured_output(JobSpecFields))
 
 
 def test_deepseek_disables_thinking_because_it_refuses_a_forced_tool_choice(

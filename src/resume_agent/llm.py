@@ -30,6 +30,8 @@ against the baseline, so change the provider and then go and look.
 from __future__ import annotations
 
 import hashlib
+import json
+import logging
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
@@ -38,7 +40,10 @@ from pathlib import Path
 from typing import Any, Literal
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableLambda
+from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger(__name__)
 
 PROMPT_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -401,10 +406,112 @@ def structured_output(llm: BaseChatModel, schema: type) -> Runnable:
 
     and the traceback lands in `parse_jd`, which looks like a parsing bug rather
     than a transport setting.
+
+    **The answer is settled here, not trusted.** DeepSeek has been seen to put a
+    wrapper of its own around the tool arguments -- `{"job_json": {...}}` for a
+    posting -- so every field looked missing and the run ended in eleven
+    validation errors. The raw reply is kept (`include_raw`), and a failed parse
+    gets one more look: a lone key that is not a field of the schema, holding
+    the actual answer, is unwrapped and validated again. Anything else still
+    fails, now with a sentence a person can read.
     """
-    return llm.with_structured_output(
-        schema, method=resolve_provider().structured_output_method
+    method = resolve_provider().structured_output_method
+    inner = llm.with_structured_output(schema, method=method, include_raw=True)
+
+    def settle(messages: Any) -> Any:
+        # Invoked inside the lambda, so callbacks still reach the model call --
+        # the web page's "calling the model" line depends on them.
+        try:
+            return settle_structured(schema, inner.invoke(messages))
+        except StructuredOutputError:
+            # Asked once more before giving up. A malformed answer is usually a
+            # one-off, and giving up ends the whole run -- which, on the hosted
+            # site, also spends one of the person's runs for the day. One retry,
+            # never more (CLAUDE.md rule 7); the second failure is the answer.
+            logger.warning("asking again for %s after an unusable answer", schema.__name__)
+            return settle_structured(schema, inner.invoke(messages))
+
+    return RunnableLambda(settle, name=f"structured {schema.__name__}")
+
+
+class StructuredOutputError(RuntimeError):
+    """The model answered, but not in a shape its schema accepts."""
+
+
+def settle_structured(schema: type[BaseModel], output: Any) -> Any:
+    """The structured answer as an instance of `schema`, or a readable failure.
+
+    `output` is what `with_structured_output(..., include_raw=True)` returns:
+    `{"raw", "parsed", "parsing_error"}`. Anything else is passed through as it
+    came -- a model integration or a test stand-in that parses for itself.
+    """
+    if not (isinstance(output, dict) and "raw" in output and "parsing_error" in output):
+        return output
+    if output.get("parsed") is not None:
+        return output["parsed"]
+
+    for answer in _answers_in(output["raw"]):
+        wrapped = _unwrapped(answer, schema)
+        for shape in (answer, wrapped):
+            if shape is None:
+                continue
+            try:
+                settled = schema.model_validate(shape)
+            except ValidationError:
+                continue
+            if shape is wrapped:
+                logger.warning(
+                    "the model wrapped its %s answer in %r; unwrapped it",
+                    schema.__name__, next(iter(answer)),
+                )
+            return settled
+
+    logger.warning(
+        "the model's %s answer did not fit the schema: %s",
+        schema.__name__, output["parsing_error"] or "no answer at all",
     )
+    raise StructuredOutputError(
+        f"The AI's answer came back in a shape this step could not use "
+        f"({schema.__name__}), so the run stopped here. Trying again usually works."
+    ) from output["parsing_error"]
+
+
+def _answers_in(raw: Any) -> list[dict]:
+    """Every candidate answer in a raw model reply: tool-call arguments, those
+    the client could not parse itself, and JSON in the text."""
+    candidates: list[Any] = [call.get("args") for call in getattr(raw, "tool_calls", None) or []]
+    candidates += [call.get("args") for call in getattr(raw, "invalid_tool_calls", None) or []]
+    content = getattr(raw, "content", None)
+    if isinstance(content, str) and content.strip():
+        candidates.append(content)
+
+    answers = []
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            try:
+                candidate = json.loads(candidate)
+            except ValueError:
+                continue
+        if isinstance(candidate, dict):
+            answers.append(candidate)
+    return answers
+
+
+def _unwrapped(answer: dict, schema: type[BaseModel]) -> dict | None:
+    """The inside of a one-key wrapper the schema never asked for, if that is
+    what `answer` is. A key that *is* a field is left alone: that is an answer
+    with most of its fields missing, not a wrapper."""
+    if len(answer) != 1:
+        return None
+    (key, value), = answer.items()
+    if key in schema.model_fields:
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    return value if isinstance(value, dict) else None
 
 
 # ---------------------------------------------------------------------------
