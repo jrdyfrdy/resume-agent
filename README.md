@@ -500,6 +500,38 @@ a `metrics` key and technologies must appear in `skills.yaml`, both checked in
 plain Python. A weaker model that overreaches gets more bullets **dropped**,
 loudly. The failure mode is a thinner resume, not a dishonest one.
 
+### Jev, for the judging steps (optional)
+
+[Jev](https://docs.typesafe.ai/introduction) (TypeSafe AI) is a model that only
+judges. You give it some text and typed questions, and it returns numbers: the
+probability a statement is true, which option fits, or where something sits on
+a scale. It writes nothing. Here it is used only where a step *judges*. Anything
+that writes, counts or compares dates stays exactly as it was: those are Jev's
+own documented weak spots, and CLAUDE.md rule 2 keeps counting in Python anyway.
+
+It is **off unless its own key is set**, and every use falls back to the path it
+replaced if Jev is slow, down or refuses. An outage makes a run slower, never
+broken.
+
+| Variable | Default | |
+|---|---|---|
+| `RESUME_AGENT_JEV_API_KEY` | *unset (off)* | An OpenRouter key. TypeSafe paused direct signups on 22 Sep 2026. |
+| `RESUME_AGENT_JEV_BASE_URL` | `https://openrouter.ai/api` | `https://api.typesafe.ai` for a direct account. |
+| `RESUME_AGENT_JEV_MODEL` | `jev-1.13` | Pinned, so eval results belong to one model version. |
+
+It has its own key variable rather than reusing `OPENROUTER_API_KEY`, because
+that one also takes part in choosing the model that *writes*.
+
+The question wording lives in `prompts/decide_*.md`, versioned like every other
+prompt. When Jev is on, the hosted site's privacy page names TypeSafe, and the
+exact things it is sent, generated from the uses that are actually switched on.
+
+```bash
+RESUME_AGENT_JEV_API_KEY=<key> uv run pytest tests/test_decisions_live.py
+```
+
+checks the key and settings with one real request, for a fraction of a cent.
+
 ### LaTeX compiler
 
 `resume-agent` looks for one of these, in this order (spec §6.4):
@@ -840,6 +872,8 @@ src/resume_agent/
                           per request and saved back by diff -- `kb/` is unchanged
   accounts/auth.py        Google sign-in, the allow-list gate, the owner's endpoints
   accounts/privacy.html   the privacy page -- every sentence a claim about the code
+  decisions/              Jev (M11, optional): its client, its three question types,
+                          and the fallback every use takes when it cannot answer
 evals/                    the eval set, its checks, the judge, the gate
   graph/nodes/cover_letter.py  the letter subgraph: draft -> verify -> retry
   models/letter.py        CoverLetter; word_count is computed, not returned

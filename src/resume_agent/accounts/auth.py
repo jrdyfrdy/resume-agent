@@ -409,7 +409,26 @@ def privacy_page(multi: MultiUser) -> str:
         else ""
     )
     page = Path(__file__).with_name("privacy.html").read_text(encoding="utf-8")
-    return page.replace("__PROVIDER__", provider).replace("__SIGNUP_NOTICE__", notice)
+    return (
+        page.replace("__PROVIDER__", provider)
+        .replace("__SIGNUP_NOTICE__", notice)
+        .replace("__JEV_NOTICE__", _jev_notice())
+    )
+
+
+def _jev_notice() -> str:
+    """What Jev is sent, when it is on -- built from the uses actually switched
+    on, so the page cannot claim more or less than the code does."""
+    from resume_agent.decisions import jev_enabled, recipient, uses  # noqa: PLC0415
+
+    sent = uses() if jev_enabled() else []
+    if not sent:
+        return ""
+    return (
+        f"<li><b>To {recipient()},</b> a model that judges rather than writes: "
+        + "; ".join(sent)
+        + ". TypeSafe says it does not train on customer data.</li>"
+    )
 
 
 def _notify_signup(webhook: str | None, user: User) -> None:

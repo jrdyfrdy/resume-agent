@@ -41,6 +41,10 @@ dependencies = [
     "itsdangerous>=2.2",
     # The Postgres driver for the hosted database (Neon).
     "psycopg[binary]>=3.2",
+    # Jev (M11), optional: the one POST to its decision endpoint. Already
+    # installed through langchain-core; declared because the code imports it,
+    # and preferred over TypeSafe's ten-day-old SDK for a single request.
+    "httpx>=0.28",
 ]
 
 [project.scripts]
