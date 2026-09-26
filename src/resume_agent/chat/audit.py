@@ -21,6 +21,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from resume_agent.graph.nodes.select import MAX_BULLETS_PER_THEME
+from resume_agent.grounding.numbers import extract_numbers
 from resume_agent.models.profile import Profile
 
 # Spec 5 / `tailor_bullets.md` rule 4. A bullet that opens with one of these is
@@ -146,7 +147,13 @@ def audit_profile(profile: Profile) -> ProfileAudit:
     return ProfileAudit(
         bullets=len(all_bullets),
         entries=len(profile.entries()),
-        bullets_without_metrics=[b.id for b in all_bullets if not b.metrics],
+        # A number in the sentence itself counts: a rewrite may use it, exactly
+        # as it may use a recorded metric (grounding/numbers.py). Counting only
+        # the metrics had the chat telling people, wrongly, that their "70%"
+        # could never appear on a resume.
+        bullets_without_metrics=[
+            b.id for b in all_bullets if not b.metrics and not extract_numbers(b.canonical)
+        ],
         theme_counts=dict(sorted(theme_counts.items(), key=lambda kv: (-kv[1], kv[0]))),
         crowded_themes=[t for t, n in theme_counts.items() if n > MAX_BULLETS_PER_THEME],
         claims=[b.id for b in all_bullets if b.confidence == "claim"],

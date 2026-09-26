@@ -243,6 +243,9 @@ def build_proposal(
     upgrade `chat_extract.md` rule 3 forbids.
     """
     known_entries = {entry.id for entry in profile.entries()}
+    # People know their jobs by name, not by id: "Globe Telecom", never
+    # "exp_globe_telecom" (found in the Basic-mode audit).
+    label_of = {entry.id: entry.label for entry in profile.entries()}
     items: list[Item] = []
 
     for index, entry in enumerate(fields.entries):
@@ -275,8 +278,7 @@ def build_proposal(
         items.append(Item(
             item_id=item_id,
             kind="bullet",
-            summary=f"Achievement for {addition.entry_id}: "
-                    f"{addition.bullet.canonical[:70]}",
+            summary=f"Achievement for {label_of.get(addition.entry_id, addition.entry_id)}",
             payload=addition.model_dump(),
             flags=flags,
         ))
@@ -550,7 +552,8 @@ def _add_bullet(profile_dir: Path, item: Item) -> str:
     data = document["data"]
     data["bullets"].append(_bullet_row(entry_id, data["bullets"], item.payload["bullet"]))
     write_document(profile_dir, relative, data)
-    return f"added an achievement to {entry_id}"
+    label = data.get("org") or data.get("name") or data.get("title") or entry_id
+    return f"added an achievement to {label}"
 
 
 def _bullet_row(entry_id: str, existing: list[dict], proposed: dict) -> dict:

@@ -399,12 +399,30 @@ def test_the_audit_finds_achievements_with_no_numbers(profile_dir: Path) -> None
 
     document = read_document(profile_dir, "experience/halvorsen_bright.yaml")
     document["data"]["bullets"][0]["metrics"] = {}
+    document["data"]["bullets"][0]["canonical"] = "Rewrote the checkout service's caching."
     write_document(profile_dir, "experience/halvorsen_bright.yaml", document["data"])
 
     audit = audit_profile(load_profile(profile_dir))
 
     assert "exp_halvorsen_bright.b1" in audit.bullets_without_metrics
     assert audit.findings()[0].kind == "no_metrics", "should be reported first"
+
+
+def test_a_number_in_the_sentence_counts_as_a_number(profile_dir: Path) -> None:
+    """Found in the audit: "cutting report prep time by 70%" with no separate
+    metric was reported as recording no numbers, and the chat told the person
+    the 70% could never appear -- but a rewrite may use any number its own
+    sentence contains."""
+    from resume_agent.kb.forms import read_document, write_document
+
+    document = read_document(profile_dir, "experience/halvorsen_bright.yaml")
+    document["data"]["bullets"][0]["metrics"] = {}
+    document["data"]["bullets"][0]["canonical"] = "Cut report prep time by 70% with a script."
+    write_document(profile_dir, "experience/halvorsen_bright.yaml", document["data"])
+
+    audit = audit_profile(load_profile(profile_dir))
+
+    assert "exp_halvorsen_bright.b1" not in audit.bullets_without_metrics
 
 
 def test_the_audit_reports_declared_but_unevidenced_skills(profile) -> None:
@@ -600,7 +618,7 @@ def test_additions_are_written_before_deletions(
 
     done = apply(proposal, profile_dir, ["bullet-0", "deletion-0"])
 
-    assert done == ["added an achievement to exp_northwind_data", f"removed {AN_ENTRY}"]
+    assert done == ["added an achievement to Northwind Data Systems", f"removed {AN_ENTRY}"]
     after = load_profile(profile_dir)
     assert AN_ENTRY not in {entry.id for entry in after.entries()}
     assert any("stream" in b.canonical for b in after.all_bullets())

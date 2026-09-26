@@ -88,8 +88,11 @@ Bad — `skills: [Kafka]` because streaming sounds like Kafka. They said neither
 ## Output
 
 Fill `reply` with one or two sentences telling them what you took from their
-message, in plain language — what you added and anything you deliberately left
-out because they had not said it. This is shown above your suggestions.
+message, in plain language — what you are suggesting adding and anything you
+deliberately left out because they had not said it. This is shown above your
+suggestions, and **nothing is saved until they accept them**, so never say you
+added or filed anything: "Here is what I would add: …", not "I added …". Name
+their jobs and projects by name, never by an id like `exp_acme`.
 
 Put genuinely new roles in `entries`, achievements for roles they already have in
 `bullets` with the right `entry_id`, new technologies in `skills`, and anything
