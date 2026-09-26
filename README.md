@@ -49,7 +49,7 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
   frontend: paste a posting, watch the run progress, read the fit report and
   the PDF without leaving the page.
 
-**Since M9**, four things the spec did not anticipate:
+**Since M9**, five things the spec did not anticipate:
 
 * **Chat** — ask what is weak about your own career file, or just describe what
   you did and let it file the details. Nothing is written until you accept it,
@@ -62,6 +62,10 @@ Standing rules for contributors (human or otherwise): [`CLAUDE.md`](CLAUDE.md).
 * **Accounts** — host it for friends: they sign in with Google, you approve
   each one, and every career file is its owner's alone. See
   [Hosting it](#hosting-it).
+* **Jev, optional** — a model that only judges takes over the judging steps
+  (checking a pasted posting, routing and checking chat, and, once the evals
+  agree, scoring), while the fact-check stays with the model that has always
+  done it. See [Jev](#jev-for-the-judging-steps-optional).
 
 ---
 
@@ -178,6 +182,7 @@ real `profile/` out of it.
 | `DEEPSEEK_API_KEY` *or* `ANTHROPIC_API_KEY` | The key runs are paid with. See [Model provider](#model-provider). |
 | `RESUME_AGENT_SIGNUP_WEBHOOK` | *Optional.* A Discord or Slack webhook URL, pinged when someone new is waiting. |
 | `RESUME_AGENT_RUNS_PER_USER_PER_DAY`, `RESUME_AGENT_RUNS_PER_DAY`, `RESUME_AGENT_CONCURRENT_RUNS` | *Optional.* 5, 40 and 1. |
+| `RESUME_AGENT_JEV_API_KEY` | *Optional.* An OpenRouter key that switches on Jev for the judging steps. The privacy page then names it. See [Jev](#jev-for-the-judging-steps-optional). |
 
 ### Deploying accounts, step by step
 
