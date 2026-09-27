@@ -101,6 +101,8 @@ class AgentState(TypedDict, total=False):
     # Who scored the evidence -- the model, or Jev (M11) -- for run.json.
     scoring: dict
     selected: list[str]  # bullet ids
+    # Labels of jobs left off the page for having fewer than two bullets.
+    left_out_entries: list[str]
     tailored: list[TailoredBullet]
     cover_letter: CoverLetter | None
     letter_verified: bool

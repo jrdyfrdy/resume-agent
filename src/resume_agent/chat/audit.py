@@ -20,7 +20,7 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass, field
 
-from resume_agent.graph.nodes.select import MAX_BULLETS_PER_THEME
+from resume_agent.graph.nodes.select import MAX_BULLETS_PER_THEME, MIN_BULLETS_PER_EXPERIENCE
 from resume_agent.grounding.numbers import extract_numbers
 from resume_agent.models.profile import Profile
 
@@ -70,6 +70,8 @@ class ProfileAudit:
     unused_skills: list[str] = field(default_factory=list)
     weak_openers: list[str] = field(default_factory=list)
     thin_entries: list[str] = field(default_factory=list)
+    # Jobs with too few achievements to be printed at all.
+    jobs_left_out: list[str] = field(default_factory=list)
     narratives: int = 0
 
     def findings(self) -> list[Finding]:
@@ -80,6 +82,14 @@ class ProfileAudit:
         """
         found: list[Finding] = []
 
+        if self.jobs_left_out:
+            found.append(Finding(
+                "job_left_out",
+                self.jobs_left_out,
+                f"A job needs at least {MIN_BULLETS_PER_EXPERIENCE} achievements to appear "
+                "on a resume. These have fewer, so the whole job is left off the page for "
+                "every posting, however well it matches. One more achievement each fixes it.",
+            ))
         if self.bullets_without_metrics:
             found.append(Finding(
                 "no_metrics",
@@ -159,7 +169,15 @@ def audit_profile(profile: Profile) -> ProfileAudit:
         claims=[b.id for b in all_bullets if b.confidence == "claim"],
         unused_skills=_unused_skills(profile, named),
         weak_openers=[b.id for b in all_bullets if has_weak_opener(b.canonical)],
-        thin_entries=[e.id for e in profile.entries() if len(e.bullets) <= THIN_ENTRY_BULLETS],
+        # A job below the minimum is reported as left out, the stronger finding.
+        thin_entries=[
+            e.id for e in profile.entries()
+            if len(e.bullets) <= THIN_ENTRY_BULLETS
+            and not (e.type == "experience" and len(e.bullets) < MIN_BULLETS_PER_EXPERIENCE)
+        ],
+        jobs_left_out=[
+            e.id for e in profile.experience if len(e.bullets) < MIN_BULLETS_PER_EXPERIENCE
+        ],
         narratives=len(profile.narratives),
     )
 

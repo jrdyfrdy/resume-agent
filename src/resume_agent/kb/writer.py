@@ -39,8 +39,10 @@ from pathlib import Path
 from resume_agent.kb.loader import (
     EXPERIENCE_DIR,
     IDENTITY_FILE,
+    LEADERSHIP_DIR,
     NARRATIVES_DIR,
     PROJECTS_DIR,
+    PUBLICATIONS_DIR,
     SKILLS_FILE,
     ProfileLoadError,
     load_profile,
@@ -54,8 +56,11 @@ BACKUP_DIR = Path(".profile-backups")
 # loads fine, looks right in the editor, and is read by nothing.
 EDITABLE_SUFFIXES = {".yaml", ".md"}
 
-# Directories a profile may contain files in, plus the root itself.
-EDITABLE_DIRS = (EXPERIENCE_DIR, PROJECTS_DIR, NARRATIVES_DIR)
+# Directories a profile may contain files in, plus the root itself. In load
+# order: the file list reads the way the profile is assembled. Leadership and
+# publications were missing, so an entry made with "+ Leadership" saved fine
+# and then could not be found in the editor again.
+EDITABLE_DIRS = (EXPERIENCE_DIR, PROJECTS_DIR, LEADERSHIP_DIR, PUBLICATIONS_DIR, NARRATIVES_DIR)
 
 
 class ProfileWriteError(RuntimeError):

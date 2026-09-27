@@ -197,7 +197,8 @@ FORMS: dict[str, tuple[DocumentKind, str | None, tuple[Field, ...]]] = {
                   choices=SKILL_CATEGORIES, labels=SKILL_CATEGORY_CHOICES, default="tools",
                   help="The heading it prints under in the Skills section."),
             Field("level", "Level", "select", required=True, choices=SKILL_LEVEL,
-                  default="working"),
+                  default="working", labels=(("expert", "Expert"), ("working", "Working knowledge"),
+                                             ("familiar", "Familiar"))),
             Field("first_used", "First used", "month", advanced=True),
         )),
     )),
@@ -331,7 +332,11 @@ def read_document(profile_dir: Path, relative: str) -> dict[str, Any]:
     """The form spec, the current values, and what to suggest in comboboxes."""
     role = document_role(relative)
     kind, root_key, _fields = FORMS[role]
-    text = read_profile_file(profile_dir, relative)
+    # Education, certifications and awards are optional files that a new
+    # profile does not have. Their form still opens -- empty -- and the first
+    # save creates the file; otherwise nobody starting fresh could add a school.
+    missing = kind == "keyed_list" and not resolve_editable_path(profile_dir, relative).exists()
+    text = "" if missing else read_profile_file(profile_dir, relative)
 
     if kind == "prose":
         data: dict[str, Any] = _split_prose(text)
@@ -469,6 +474,16 @@ def write_document(profile_dir: Path, relative: str, data: dict[str, Any]) -> Pa
         return write_profile_file(profile_dir, relative, _join_prose(data))
 
     yaml = _yaml()
+    path = resolve_editable_path(profile_dir, relative)
+    if kind == "keyed_list" and not path.exists():
+        # The first save of an optional section: make the file, and take it
+        # away again if the save is refused, the way `create_entry` does.
+        path.write_text("", encoding="utf-8")
+        try:
+            return write_document(profile_dir, relative, data)
+        except ProfileWriteError:
+            path.unlink(missing_ok=True)
+            raise
     document = yaml.load(read_profile_file(profile_dir, relative)) or {}
 
     if kind == "keyed_list":
@@ -671,11 +686,13 @@ ID_PREFIXES: dict[str, tuple[str, str]] = {
 
 
 def create_entry(profile_dir: Path, role: str, name: str) -> str:
-    """Add a job, project, leadership role or publication.
+    """Add a job, project, leadership role, publication or narrative.
 
     Returns the new file's relative path. Both the filename and the id are
     generated, and every bullet added later is namespaced under the id.
     """
+    if role == "narrative":
+        return _create_narrative(profile_dir, name)
     if role not in ID_PREFIXES:
         raise ProfileWriteError(f"cannot create a {role!r}")
 
@@ -723,6 +740,28 @@ def create_entry(profile_dir: Path, role: str, name: str) -> str:
     return relative
 
 
+def _create_narrative(profile_dir: Path, title: str) -> str:
+    """A new `narratives/*.md` holding just its title, ready for its prose."""
+    slug = slugify(title)
+    if slug == "readme":  # the one name the loader skips
+        slug = "readme_2"
+    target = Path(profile_dir) / NARRATIVES_DIR / f"{slug}.md"
+    count = 2
+    while target.exists():
+        target = Path(profile_dir) / NARRATIVES_DIR / f"{slug}_{count}.md"
+        count += 1
+    relative = f"{NARRATIVES_DIR}/{target.name}"
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("", encoding="utf-8")
+    try:
+        write_profile_file(profile_dir, relative, _join_prose({"title": title}))
+    except ProfileWriteError:
+        target.unlink(missing_ok=True)
+        raise
+    return relative
+
+
 def next_bullet_id(entry_id: str, existing: list[str]) -> str:
     """`<entry id>.b<next free number>`.
 
@@ -752,6 +791,29 @@ def delete_document(profile_dir: Path, relative: str) -> Path:
         path.write_text(backup.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         raise ProfileWriteError(f"removing {relative} would break the profile: {exc}") from exc
     return backup
+
+
+def entry_files(profile_dir: Path) -> dict[str, str]:
+    """Which file holds each job, project, leadership role and publication.
+
+    Keyed on the entry id, so the page can go from an entry it shows to the
+    form that edits it. A file that does not parse is skipped; the loader is
+    what reports it.
+    """
+    yaml = YAML(typ="safe")
+    found: dict[str, str] = {}
+    for _prefix, directory in ID_PREFIXES.values():
+        folder = Path(profile_dir) / directory
+        if not folder.is_dir():
+            continue
+        for path in sorted(folder.glob("*.yaml")):
+            try:
+                loaded = yaml.load(path.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001 - reported by the loader, not here
+                continue
+            if isinstance(loaded, dict) and loaded.get("id"):
+                found[str(loaded["id"])] = f"{directory}/{path.name}"
+    return found
 
 
 def _existing_ids(profile_dir: Path) -> set[str]:

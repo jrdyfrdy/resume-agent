@@ -94,6 +94,7 @@ from resume_agent.kb.forms import (
     add_missing_skills,
     create_entry,
     delete_document,
+    entry_files,
     read_document,
     skill_usage,
     write_document,
@@ -531,7 +532,8 @@ def create_app(
                 loaded = load_profile(directory)
             except ProfileLoadError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return build_profile_detail(profile, loaded)
+            paths = entry_files(directory)
+        return build_profile_detail(profile, loaded, paths)
 
     # -- editing -----------------------------------------------------------
     #

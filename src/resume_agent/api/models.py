@@ -12,6 +12,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from resume_agent.kb.forms import SKILL_CATEGORY_CHOICES
 from resume_agent.latex.context import format_date_range, format_year_month
 from resume_agent.models.profile import Bullet, Profile
 
@@ -139,6 +140,10 @@ class EntryView(BaseModel):
     subheading: str
     tech: list[str] = Field(default_factory=list)
     bullets: list[BulletView] = Field(default_factory=list)
+    # The file that holds it, so the page can open its form from the overview.
+    path: str = ""
+    # What to call it in a sentence: the employer, the project, the paper.
+    name: str = ""
 
 
 class ProfileDetail(BaseModel):
@@ -155,11 +160,15 @@ class ProfileDetail(BaseModel):
     person: str
     email: str
     location: str
+    phone: str = ""
     entries: list[EntryView] = Field(default_factory=list)
     skills_by_category: dict[str, list[str]] = Field(default_factory=dict)
+    # The heading each category prints under, for the ones that have one.
+    category_labels: dict[str, str] = Field(default_factory=dict)
     narratives: list[str] = Field(default_factory=list)
     education: list[str] = Field(default_factory=list)
     certifications: list[str] = Field(default_factory=list)
+    awards: list[str] = Field(default_factory=list)
 
 
 class ProfileFileList(BaseModel):
@@ -251,7 +260,7 @@ class CreateEntryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     profile: str
-    role: Literal["experience", "project", "leadership", "publication"]
+    role: Literal["experience", "project", "leadership", "publication", "narrative"]
     name: str = Field(min_length=1, max_length=200)
 
 
@@ -351,6 +360,10 @@ class RunSummary(BaseModel):
     # Surfaced rather than buried: a dropped bullet means the resume is weaker
     # than it could have been, and the page should say so plainly.
     dropped_bullets: list[str] = Field(default_factory=list)
+    # Jobs that had to be left off because they have one achievement and a job
+    # needs two to appear. Without this a first resume could come back empty
+    # with nothing to say why.
+    left_out: list[str] = Field(default_factory=list)
     must_have_gaps: list[str] = Field(default_factory=list)
     cover_letter: str | None = None
     cover_letter_words: int | None = None
@@ -385,7 +398,9 @@ class ApplicationSummary(BaseModel):
     has_pdf: bool = False
 
 
-def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
+def build_profile_detail(
+    name: str, profile: Profile, paths: dict[str, str] | None = None
+) -> ProfileDetail:
     """Flatten a loaded `Profile` into something the browser can render.
 
     Experience and projects become one list because the Profile tab shows them
@@ -400,8 +415,8 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
             EntryView(
                 id=role.id,
                 kind="experience",
-                heading=f"{role.title}, {role.org}",
-                subheading=f"{_dates(role.start, role.end)} · {role.location}",
+                heading=_joined(", ", role.title, role.org),
+                subheading=_joined(" · ", _dates(role.start, role.end), role.location),
                 tech=list(role.tech),
                 bullets=[_bullet_view(b) for b in role.bullets],
             )
@@ -428,8 +443,8 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
             EntryView(
                 id=role.id,
                 kind="leadership",
-                heading=f"{role.title}, {role.org}",
-                subheading=f"{_dates(role.start, role.end)} · {role.location}",
+                heading=_joined(", ", role.title, role.org),
+                subheading=_joined(" · ", _dates(role.start, role.end), role.location),
                 tech=list(role.tech),
                 bullets=[_bullet_view(b) for b in role.bullets],
             )
@@ -448,6 +463,11 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
             )
         )
 
+    names = {entry.id: entry.label for entry in profile.entries()}
+    for entry in entries:
+        entry.path = (paths or {}).get(entry.id, "")
+        entry.name = names.get(entry.id, "")
+
     by_category: dict[str, list[str]] = {}
     for skill in profile.skills:
         by_category.setdefault(skill.category, []).append(skill.canonical)
@@ -459,12 +479,21 @@ def build_profile_detail(name: str, profile: Profile) -> ProfileDetail:
         person=profile.identity.name,
         email=profile.identity.email,
         location=profile.identity.location,
+        phone=profile.identity.phone,
         entries=entries,
         skills_by_category=by_category,
+        category_labels=dict(SKILL_CATEGORY_CHOICES),
         narratives=[n.name for n in profile.narratives],
         education=[f"{e.degree} — {e.institution}" for e in profile.education],
         certifications=[f"{c.name} — {c.issuer}" for c in profile.certifications],
+        awards=[f"{a.name} — {a.issuer}" for a in profile.awards],
     )
+
+
+def _joined(separator: str, *parts: str) -> str:
+    """The parts that are filled in. A job saved before its title was typed
+    used to show as ", Globe Telecom"."""
+    return separator.join(part for part in parts if part)
 
 
 def _bullet_view(bullet: Bullet) -> BulletView:
@@ -500,6 +529,7 @@ def summarise_state(run_id: str, status: RunStatus, state: dict[str, Any]) -> Ru
         layout_attempts=state.get("layout_attempts", 0),
         bullets=[t.text for t in state.get("tailored", [])],
         dropped_bullets=list(state.get("dropped_bullets", [])),
+        left_out=list(state.get("left_out_entries", [])),
         must_have_gaps=[r.text for r in fit.must_have_gaps()] if fit else [],
         cover_letter=letter.body() if letter else None,
         cover_letter_words=letter.word_count if letter else None,

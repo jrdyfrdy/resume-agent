@@ -344,6 +344,13 @@ def test_budget_for_one_bullet_drops_the_lone_experience() -> None:
     result = select_content(job, matches, profile, 1)
     assert result.selected_bullet_ids == []
     assert any("could not reach" in reason for reason in result.rejected.values())
+    # Named, so the page can say which job went and why.
+    assert result.entries_too_thin == ["exp_1"]
+
+
+def test_a_job_that_keeps_its_bullets_is_not_reported_thin() -> None:
+    job, matches, profile, _ = _tiny_case(2)
+    assert select_content(job, matches, profile, 2).entries_too_thin == []
 
 
 def test_budget_for_two_bullets_keeps_both() -> None:

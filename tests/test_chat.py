@@ -425,6 +425,22 @@ def test_a_number_in_the_sentence_counts_as_a_number(profile_dir: Path) -> None:
     assert "exp_halvorsen_bright.b1" not in audit.bullets_without_metrics
 
 
+def test_a_job_with_one_achievement_is_reported_as_left_out(profile_dir) -> None:
+    """Selection drops a job with fewer than two achievements, so a first job
+    with one comes back as an empty resume. The audit says so first."""
+    from resume_agent.kb.forms import read_document, write_document
+
+    document = read_document(profile_dir, "experience/halvorsen_bright.yaml")
+    document["data"]["bullets"] = document["data"]["bullets"][:1]
+    write_document(profile_dir, "experience/halvorsen_bright.yaml", document["data"])
+
+    audit = audit_profile(load_profile(profile_dir))
+
+    assert audit.jobs_left_out == ["exp_halvorsen_bright"]
+    assert "exp_halvorsen_bright" not in audit.thin_entries
+    assert audit.findings()[0].kind == "job_left_out"
+
+
 def test_the_audit_reports_declared_but_unevidenced_skills(profile) -> None:
     audit = audit_profile(profile)
     assert "Go" in audit.unused_skills
@@ -434,7 +450,7 @@ def test_findings_are_ordered_by_what_they_cost(profile) -> None:
     audit = audit_profile(profile)
     kinds = [f.kind for f in audit.findings()]
     assert kinds == sorted(kinds, key=lambda k: [
-        "no_metrics", "crowded_themes", "thin_entry",
+        "job_left_out", "no_metrics", "crowded_themes", "thin_entry",
         "weak_opener", "unverified", "unused_skill",
     ].index(k))
 

@@ -102,6 +102,10 @@ class SelectionResult(BaseModel):
     line_budget: int = 0
     # bullet_id -> the constraint that excluded it, in plain words.
     rejected: dict[str, str] = Field(default_factory=dict)
+    # Experience entries that had bullets chosen and then lost them all to the
+    # two-bullet minimum. A whole job vanishing is the one omission a person
+    # cannot work out from the page, so it is reported by name.
+    entries_too_thin: list[str] = Field(default_factory=list)
 
     @property
     def fits(self) -> bool:

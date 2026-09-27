@@ -346,6 +346,19 @@ def test_an_empty_profile_keeps_awkward_names_and_the_email(tmp_path: Path) -> N
     assert identity.email == "jo@example.com"
 
 
+def test_leadership_and_publications_are_listed(tmp_path: Path) -> None:
+    """They were missing from the list, so an entry made with "+ Leadership"
+    saved and then could not be opened again."""
+    from resume_agent.kb.forms import create_entry
+
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada")
+    made = [create_entry(target, "leadership", "Chess Club"),
+            create_entry(target, "publication", "On Queues")]
+
+    assert set(made) <= set(relative_profile_files(target))
+
+
 def test_creating_over_an_existing_directory_is_refused(tmp_path: Path) -> None:
     target = tmp_path / "fresh"
     target.mkdir()

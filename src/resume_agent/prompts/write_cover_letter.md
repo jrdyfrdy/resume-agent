@@ -62,6 +62,13 @@ apologising for taking their time.
    says. You have not read their engineering blog, and claiming otherwise is the
    easiest way for this letter to embarrass its sender.
 
+8. **The posting's checklist is not the candidate's.** Do not repeat a tool, a
+   certification, an acronym or a number from the posting's requirements unless
+   the same thing appears in the achievements. "CCNA", "Zabbix" or "2+ years" in
+   the letter reads as the candidate claiming it, and the checker rejects it.
+   Describe what the role needs in plain words instead — "keeping customer links
+   up", "automating the reporting" — and never state years of experience.
+
 ## If you are given critiques
 
 A critique means a previous draft was rejected. Fix exactly what it names.

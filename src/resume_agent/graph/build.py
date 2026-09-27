@@ -157,8 +157,10 @@ def node_select(state: AgentState) -> dict:
         result.total_estimated_lines,
         budget,
     )
+    labels = {entry.id: entry.label for entry in profile.entries()}
     return {
         "selected": result.selected_bullet_ids,
+        "left_out_entries": [labels.get(e, e) for e in result.entries_too_thin],
         "line_budget": budget,
         # Re-entering selection invalidates the previous rewrites, and resets the
         # grounding budget: these are different bullets facing the gate fresh.

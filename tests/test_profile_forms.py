@@ -20,6 +20,7 @@ from resume_agent.kb.forms import (
     create_entry,
     delete_document,
     document_role,
+    entry_files,
     next_bullet_id,
     read_document,
     skill_usage,
@@ -28,6 +29,7 @@ from resume_agent.kb.forms import (
 from resume_agent.kb.loader import load_profile
 from resume_agent.kb.writer import (
     ProfileWriteError,
+    create_empty_profile,
     read_profile_file,
     relative_profile_files,
     scaffold_profile,
@@ -367,3 +369,58 @@ def test_the_basic_form_hides_the_expert_fields() -> None:
     shown = {f.name for f in BULLET_FIELDS if not f.advanced}
 
     assert shown == {"canonical", "skills"}
+
+
+# ---------------------------------------------------------------------------
+# Sections a new profile does not have yet
+# ---------------------------------------------------------------------------
+
+
+def test_a_new_profile_can_open_and_save_its_first_school(tmp_path: Path) -> None:
+    """Found in the audit: a fresh profile has no education.yaml, and the form
+    refused to open a file that did not exist -- so nobody starting empty could
+    add a school."""
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada")
+
+    document = read_document(target, "education.yaml")
+    assert document["data"] == {"education": []}
+
+    write_document(target, "education.yaml", {"education": [{
+        "institution": "Mapua University", "degree": "BS Computer Engineering",
+        "location": "Manila", "start": "2018-08", "end": "2023-07",
+        "gpa": "", "coursework": [], "honors": [],
+    }]})
+    assert [e.institution for e in load_profile(target).education] == ["Mapua University"]
+
+
+def test_a_refused_first_save_leaves_no_file_behind(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada")
+
+    with pytest.raises(ProfileWriteError):
+        write_document(target, "education.yaml", {"education": [{
+            "institution": "Mapua University", "degree": "BS", "location": "Manila",
+            "start": "not a month",
+        }]})
+    assert not (target / "education.yaml").exists()
+
+
+def test_every_entry_is_found_in_its_file() -> None:
+    files = entry_files(PROFILE_EXAMPLE)
+    profile = load_profile(PROFILE_EXAMPLE)
+
+    assert set(files) == {entry.id for entry in profile.entries()}
+    for entry_id, relative in files.items():
+        assert read_document(PROFILE_EXAMPLE, relative)["data"]["id"] == entry_id
+
+
+def test_a_narrative_can_be_started_from_its_title(tmp_path: Path) -> None:
+    target = tmp_path / "fresh"
+    create_empty_profile(target, name="Ada")
+
+    relative = create_entry(target, "narrative", "How I learn")
+
+    assert relative == "narratives/how_i_learn.md"
+    assert read_document(target, relative)["data"]["title"] == "How I learn"
+    assert [n.name for n in load_profile(target).narratives] == ["how_i_learn"]

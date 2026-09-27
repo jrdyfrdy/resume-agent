@@ -223,9 +223,11 @@ def select_content(
     # if none fits, drop the lone bullet entirely. Dropping is the honest
     # resolution -- a job heading with one line under it reads worse than the
     # job not appearing.
+    before_repair = {c.entry_id for c in selected if c.entry_type == "experience"}
     selected, used_lines, repair_rejections = _enforce_minimum_experience_bullets(
         selected, candidates, used_lines, line_budget, theme_counts
     )
+    too_thin = before_repair - {c.entry_id for c in selected if c.entry_type == "experience"}
     rejected.update(repair_rejections)
 
     # A bullet can be rejected in an earlier pass and then legitimately promoted
@@ -244,6 +246,7 @@ def select_content(
         total_estimated_lines=used_lines,
         line_budget=line_budget,
         rejected=rejected,
+        entries_too_thin=sorted(too_thin),
     )
 
 

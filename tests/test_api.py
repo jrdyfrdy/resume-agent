@@ -676,6 +676,16 @@ def test_profile_detail_exposes_the_bullets(client: TestClient) -> None:
     assert all(isinstance(v, str) for b in with_metrics for v in b["metrics"].values())
 
 
+def test_profile_detail_says_which_file_holds_each_entry(client: TestClient) -> None:
+    """The overview opens an entry's form straight from the entry."""
+    detail = client.get("/api/profile/detail").json()
+
+    assert detail["phone"]
+    for entry in detail["entries"]:
+        form = client.get("/api/profile/form", params={"path": entry["path"]}).json()
+        assert form["data"]["id"] == entry["id"]
+
+
 def test_profile_detail_groups_skills_by_category(client: TestClient) -> None:
     categories = client.get("/api/profile/detail").json()["skills_by_category"]
     assert "language" in categories
@@ -1124,6 +1134,13 @@ def test_no_pdf_is_a_404_not_a_broken_embed(client: TestClient) -> None:
 # ===========================================================================
 # The wire shape
 # ===========================================================================
+
+
+def test_the_summary_names_jobs_left_off_the_page() -> None:
+    """A first job with one achievement is dropped by selection; the page has to
+    be able to say which job and why, or the resume just comes back empty."""
+    summary = summarise_state("r1", "done", {"left_out_entries": ["Globe Telecom"]})
+    assert summary.left_out == ["Globe Telecom"]
 
 
 def test_summarise_state_is_json_safe() -> None:
